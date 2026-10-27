@@ -239,10 +239,19 @@ These numbers are what the model actually receives.
 
 You don't need these details to understand tokenization. They're here so the names are familiar when you meet them.
 
-- **Byte-level BPE** (used by many GPT-family tokenizers): it starts from the 256 possible **byte** values rather than directly from letters. Every possible text is made of bytes, so byte-level tokenizers can represent arbitrary input bytes without requiring an unknown-token placeholder, provided the tokenizer supports all byte values. This solves the "mug" problem.
-- **WordPiece** (used by BERT): another subword method. It learns its vocabulary with a different procedure from standard BPE. BERT marks pieces that continue a word with `##`, as in `["play", "##ing"]`.
-- **SentencePiece**: a tokenizer framework that can learn subword vocabularies directly from raw text, using methods such as BPE or Unigram. It often represents spaces with a visible marker such as `▁`, which helps it handle languages with different word-boundary conventions.
-- **Special tokens**: extra tokens with special jobs, such as `[PAD]` (padding), `[BOS]` (start of text), `[EOS]` (end of text) and `[MASK]`.
+- **Byte-level BPE**: instead of starting from letters, it starts from **bytes**, the 256 basic building blocks every computer text is made of. Since every text is made of bytes, it never gets stuck on unknown text. This solves the "mug" problem. Many GPT models use it.
+  - 📖 Learn more: [minbpe README](https://github.com/karpathy/minbpe/blob/master/README.md) by Andrej Karpathy: a small, readable byte-level BPE, starting from the 256 bytes
+  - 📖 Learn more: [Byte-Pair Encoding tokenization](https://huggingface.co/learn/llm-course/chapter6/5) (Hugging Face course): uses the same "hug, pug, pun" example as Section 5, then explains the byte-level version
+- **WordPiece**: another way to learn subwords, used by the BERT model. It marks pieces that continue a word with `##`, as in `["play", "##ing"]`.
+  - 📖 Learn more: [WordPiece tokenization](https://huggingface.co/learn/llm-course/chapter6/6) (Hugging Face course): a step-by-step worked example
+- **SentencePiece**: a popular tool for building tokenizers. It treats spaces as a normal symbol, often shown as `▁`, which helps with languages like Chinese or Japanese that don't put spaces between words.
+  - 📖 Learn more: [SentencePiece README](https://github.com/google/sentencepiece/blob/master/README.md) (Google): what it is and how it handles spaces
+  - 📖 Learn more: [Unigram tokenization](https://huggingface.co/learn/llm-course/chapter6/7) (Hugging Face course): the method SentencePiece often uses
+- **Special tokens**: extra tokens with special jobs:
+  - `[BOS]` / `[EOS]`: mark the start and end of a text
+  - `[PAD]`: filler that makes short texts as long as longer ones, so they can be processed together
+  - `[MASK]`: hides a word so a model can practise guessing it
+  - 📖 Learn more: [Handling multiple sequences](https://huggingface.co/learn/llm-course/chapter2/5) (Hugging Face course): padding explained with examples
 
 ### Common mistakes
 
