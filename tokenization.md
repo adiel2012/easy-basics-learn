@@ -55,7 +55,7 @@ There are three main choices for what a "piece" should be.
 "cats"  →  ["c", "a", "t", "s"]
 ```
 
-- ✅ Tiny vocabulary, and any word can be written
+- ✅ A small vocabulary can represent any word made from the supported characters
 - ❌ Sequences get very long
 - ❌ A single letter carries almost no meaning
 
@@ -191,7 +191,7 @@ We could keep going, but let's stop here. The tokenizer has learned **3 merge ru
 
 ### Using the tokenizer on new words
 
-To tokenize a word in this simplified version, split it into characters, then apply the merge rules **in the order they were learned**. Rules learned earlier have higher priority.
+To tokenize new text in this simplified example, split it into characters and repeatedly apply the available merge with the **highest learned priority** (rules learned earlier have higher priority). Here, that is the same as applying our three merge rules in their learned order whenever they match.
 
 **"hugs"**
 
@@ -239,7 +239,7 @@ These numbers are what the model actually receives.
 
 You don't need these details to understand tokenization. They're here so the names are familiar when you meet them.
 
-- **Byte-level BPE** (used by GPT models): it starts from the 256 possible **bytes** instead of letters. Every possible text is made of bytes, so there is never an unknown token. This solves the "mug" problem.
+- **Byte-level BPE** (used by many GPT-family tokenizers): it starts from the 256 possible **byte** values rather than directly from letters. Every possible text is made of bytes, so any text can be represented without an unknown-token placeholder. This solves the "mug" problem.
 - **WordPiece** (used by BERT): another subword method. It learns its vocabulary with a different procedure from standard BPE. BERT marks pieces that continue a word with `##`, as in `["play", "##ing"]`.
 - **SentencePiece**: it treats spaces as a normal character (often shown as `▁`), so it works well for languages that don't use spaces between words.
 - **Special tokens**: extra tokens with special jobs, such as `[PAD]` (padding), `[BOS]` (start of text), `[EOS]` (end of text) and `[MASK]`.
@@ -260,6 +260,23 @@ You don't need these details to understand tokenization. They're here so the nam
 - New text is tokenized by applying the learned merges **in order**.
 - Byte-level tokenizers can handle **any text**, with no unknown tokens.
 
+### Quick check
+
+Suppose a tokenizer knows these tokens: `c, a, t, s, ca, at, cat`.
+
+1. Can it represent "cats" without having a "cats" token?
+2. Does token ID 7 mean the same thing in every tokenizer?
+3. Why might a byte-level tokenizer handle an unfamiliar character better than a character tokenizer with an incomplete vocabulary?
+
+<details>
+<summary>Show answers</summary>
+
+1. **Yes.** It can combine the pieces it has, for example `["cat", "s"]`.
+2. **No.** Token IDs depend on each tokenizer's own vocabulary. ID 7 can be a different token in every tokenizer.
+3. **Every character is made of bytes**, and a byte-level tokenizer always knows all 256 byte values. So it can represent the character through its bytes, even if it has never seen that character before.
+
+</details>
+
 ## 8. Going further
 
 Tokenization is the first step before a model like a transformer can work with text:
@@ -269,6 +286,6 @@ text  →  tokens  →  token IDs  →  embedding vectors  →  transformer
                                   (one row per token)
 ```
 
-The model has an **embedding table**: one row for every token in the vocabulary. Each row is a vector (a list of numbers) that the model **learns** during training. Each token ID is used to look up its row, called the token's **embedding**. Stacking those vectors gives a matrix with **one row per token**. That matrix is the input X in the [Attention Blocks](attention_blocks.md) guide, and the number of tokens is its number of rows, n.
+The model has an **embedding table**: one row for every token in the vocabulary. Each row is a vector (a list of numbers) that the model **learns** during training. Each token ID is used to look up its row, called the token's **embedding**. Depending on the model, these token embeddings are usually combined with positional information (where each token sits in the text) before entering the transformer. Stacking those vectors gives a matrix with **one row per token**. That matrix is the input X in the [Attention Blocks](attention_blocks.md) guide, and the number of tokens is its number of rows, n.
 
 This is why tokenization matters so much: it decides how many tokens a text uses, which affects how much text fits in a model's context and how much it costs to process.
