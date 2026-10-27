@@ -285,8 +285,8 @@ text  →  tokens  →  token IDs  →  embedding vectors  →  transformer
                                   (one row per token)
 ```
 
-The model has an **embedding table**: one row for every token in the vocabulary. Each row is a vector (a list of numbers) that the model **learned** during training. When the model processes text, each token ID simply selects its row, called the token's **embedding**. Nothing new is learned during the lookup itself. The transformer then processes these vectors through its neural-network layers to produce contextual representations.
+The model has an **embedding table**: one row for every token in the vocabulary. Each row is a vector (a list of numbers) that the model **learned** during training. When the model processes text, each token ID simply selects its row, called the token's **embedding**. Nothing new is learned during the lookup itself.
 
-Stacking the embeddings of all the tokens in a text gives a matrix with **one row per token**. Depending on the model, this matrix is usually combined with positional information (where each token sits in the text) before entering the transformer. The result is the input X in the [Attention Blocks](attention_blocks.md) guide, and the number of tokens is its number of rows, n.
+Stacking the embeddings of all the tokens in a text gives a matrix with **one row per token**. Depending on the model, this matrix is usually combined with positional information (where each token sits in the text) before entering the transformer. The result is the input X in the [Attention Blocks](attention_blocks.md) guide, and the number of tokens is its number of rows, n. The transformer then processes X through its neural-network layers to produce contextual representations.
 
 This is why tokenization matters so much: it decides how many tokens a text uses, which affects how much text fits in a model's context and how much it costs to process.
