@@ -73,7 +73,7 @@ Subwords are the middle ground. They take the good parts of both other options.
 
 ### Where the vocabulary comes from
 
-The tokenizer **learns** its vocabulary from a large amount of text before the model is trained. The most popular method is **Byte Pair Encoding (BPE)**, and the idea is very simple:
+The tokenizer **learns** its vocabulary from a large amount of text before the model is trained. One of the most popular methods is **Byte Pair Encoding (BPE)**, and the idea is very simple:
 
 > Start with single characters. Find the pair that appears next to each other most often. Glue it into one new token. Repeat.
 
@@ -239,7 +239,7 @@ These numbers are what the model actually receives.
 
 You don't need these details to understand tokenization. They're here so the names are familiar when you meet them.
 
-- **Byte-level BPE** (used by many GPT-family tokenizers): it starts from the 256 possible **byte** values rather than directly from letters. Every possible text is made of bytes, so any text can be represented without an unknown-token placeholder. This solves the "mug" problem.
+- **Byte-level BPE** (used by many GPT-family tokenizers): it starts from the 256 possible **byte** values rather than directly from letters. Every possible text is made of bytes, so arbitrary input text can be represented without an unknown-token placeholder. This solves the "mug" problem.
 - **WordPiece** (used by BERT): another subword method. It learns its vocabulary with a different procedure from standard BPE. BERT marks pieces that continue a word with `##`, as in `["play", "##ing"]`.
 - **SentencePiece**: it treats spaces as a normal character (often shown as `▁`), so it works well for languages that don't use spaces between words.
 - **Special tokens**: extra tokens with special jobs, such as `[PAD]` (padding), `[BOS]` (start of text), `[EOS]` (end of text) and `[MASK]`.
@@ -257,7 +257,7 @@ You don't need these details to understand tokenization. They're here so the nam
 - Tokenization turns **text → tokens → numbers (IDs)**.
 - Modern models use **subwords**: common words stay whole, and rare words are split into reusable pieces.
 - **BPE** learns its vocabulary by repeatedly **merging the most frequent pair**.
-- New text is tokenized by applying the learned merges **in order**.
+- New text is tokenized by applying the learned merges **by priority**, until none apply.
 - Byte-level tokenizers can represent **arbitrary text**, with no unknown tokens.
 
 ### Quick check
@@ -285,6 +285,8 @@ text  →  tokens  →  token IDs  →  embedding vectors  →  transformer
                                   (one row per token)
 ```
 
-The model has an **embedding table**: one row for every token in the vocabulary. Each row is a vector (a list of numbers) that the model **learned** during training. When the model processes text, each token ID simply selects its row, called the token's **embedding**. Nothing new is learned at this point; it's a lookup. Depending on the model, these token embeddings are usually combined with positional information (where each token sits in the text) before entering the transformer. Stacking those vectors gives a matrix with **one row per token**. That matrix is the input X in the [Attention Blocks](attention_blocks.md) guide, and the number of tokens is its number of rows, n.
+The model has an **embedding table**: one row for every token in the vocabulary. Each row is a vector (a list of numbers) that the model **learned** during training. When the model processes text, each token ID simply selects its row, called the token's **embedding**. Nothing new is learned at this point; it's a lookup.
+
+Stacking the embeddings of all the tokens in a text gives a matrix with **one row per token**. Depending on the model, this matrix is usually combined with positional information (where each token sits in the text) before entering the transformer. The result is the input X in the [Attention Blocks](attention_blocks.md) guide, and the number of tokens is its number of rows, n.
 
 This is why tokenization matters so much: it decides how many tokens a text uses, which affects how much text fits in a model's context and how much it costs to process.
