@@ -73,7 +73,7 @@ Subwords are the middle ground. They take the good parts of both other options.
 
 ### Where the vocabulary comes from
 
-The tokenizer **learns** its vocabulary from a large amount of text before the model is trained. One of the most popular methods is **Byte Pair Encoding (BPE)**, and the idea is very simple:
+The tokenizer is typically **trained** on a large amount of text to learn its vocabulary, before the language model itself is trained. (The model then learns its own parameters, including the embeddings in Section 8, during model training.) One of the most popular methods is **Byte Pair Encoding (BPE)**, and the idea is very simple:
 
 > Start with single characters. Find the pair that appears next to each other most often. Glue it into one new token. Repeat.
 
@@ -191,7 +191,7 @@ We could keep going, but let's stop here. The tokenizer has learned **3 merge ru
 
 ### Using the tokenizer on new words
 
-To tokenize new text in this simplified example, split it into characters and repeatedly apply the available merge with the **highest learned priority** (the merge learned earliest has the highest priority). Stop when no learned merge can be applied. Here, that is the same as applying our three merge rules in their learned order whenever they match.
+To tokenize new text in this simplified example, split it into characters and repeatedly apply the available merge with the **highest learned priority** (the merge learned earliest has the highest priority). Stop when no learned merge can be applied. At each step, choose the highest-priority merge that is currently possible.
 
 **"hugs"**
 
@@ -258,7 +258,7 @@ You don't need these details to understand tokenization. They're here so the nam
 - Modern models use **subwords**: common words stay whole, and rare words are split into reusable pieces.
 - **BPE** learns its vocabulary by repeatedly **merging the most frequent pair**.
 - New text is tokenized by applying the learned merges **by priority**, until none apply.
-- Byte-level tokenizers can represent **arbitrary text**, with no unknown tokens.
+- Byte-level tokenizers can represent **arbitrary input bytes** without an unknown-token placeholder, as long as the implementation covers all byte values.
 
 ### Quick check
 
