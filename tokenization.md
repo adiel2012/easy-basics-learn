@@ -47,7 +47,7 @@ There are three main choices for what a "piece" should be.
 
 - ✅ Short sequences
 - ❌ The vocabulary gets huge: every word, plus every form of it ("cat", "cats", "catlike"...)
-- ❌ A new word, or a typo, can't be handled at all
+- ❌ A new word or typo is either mapped to an unknown token or cannot be represented directly
 
 **Option B: single characters**
 
@@ -239,7 +239,7 @@ These numbers are what the model actually receives.
 
 You don't need these details to understand tokenization. They're here so the names are familiar when you meet them.
 
-- **Byte-level BPE** (used by many GPT-family tokenizers): it starts from the 256 possible **byte** values rather than directly from letters. Every possible text is made of bytes, so arbitrary input text can be represented without an unknown-token placeholder. This solves the "mug" problem.
+- **Byte-level BPE** (used by many GPT-family tokenizers): it starts from the 256 possible **byte** values rather than directly from letters. Every possible text is made of bytes, so byte-level tokenizers can represent arbitrary input bytes without requiring an unknown-token placeholder, provided the tokenizer supports all byte values. This solves the "mug" problem.
 - **WordPiece** (used by BERT): another subword method. It learns its vocabulary with a different procedure from standard BPE. BERT marks pieces that continue a word with `##`, as in `["play", "##ing"]`.
 - **SentencePiece**: a tokenizer framework that can learn subword vocabularies directly from raw text, using methods such as BPE or Unigram. It often represents spaces with a visible marker such as `▁`, which helps it handle languages with different word-boundary conventions.
 - **Special tokens**: extra tokens with special jobs, such as `[PAD]` (padding), `[BOS]` (start of text), `[EOS]` (end of text) and `[MASK]`.
