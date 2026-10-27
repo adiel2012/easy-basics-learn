@@ -8,6 +8,7 @@ Each guide starts from zero and builds up one small step at a time. If something
 
 | Topic | Guide | In one sentence |
 |---|---|---|
+| Machine learning | [Tokenization](tokenization.md) | How text is cut into small pieces and turned into numbers a computer can use |
 | Machine learning | [Attention Blocks](attention_blocks.md) | How each word in a sentence decides which other words to pay attention to |
 
 ## Our rules for writing simply

@@ -1,0 +1,274 @@
+# Tokenization
+
+## 1. In simple words
+
+A computer stores text as numbers (bytes), but a language model needs text in a different numeric form: a sequence of numbered pieces from a fixed list. **Tokenization** is the step that produces that sequence.
+
+It works in two moves:
+
+1. **Cut** the text into small pieces called **tokens**.
+2. **Look up** each piece in a numbered list, and replace it with its number.
+
+**Analogy: LEGO bricks.** Imagine building any word out of a box of LEGO bricks. Common words get their own big brick ("the", "and"). Rare words are built from several smaller bricks ("un" + "believ" + "able"). With a good set of bricks, you can build most words, even ones you've never seen before, as long as you have the small bricks they need.
+
+```
+"I love cats"  →  ["I", " love", " cats"]  →  [40, 1842, 9246]
+     text              tokens                     token IDs
+```
+
+(The numbers here are made up. Every tokenizer has its own list.)
+
+## 2. What you need to know first
+
+Nothing! Just the idea that computers store everything as numbers.
+
+## 3. The key terms
+
+| Term | Meaning | Example |
+|---|---|---|
+| **Token** | one piece of text | `" cats"` |
+| **Vocabulary** | the full list of tokens the tokenizer knows | 50,000 tokens |
+| **Token ID** | a token's number in the vocabulary | `9246` |
+| **Tokenizer** | the tool that cuts text and looks up IDs | |
+| **Merge** | joining two tokens into one bigger token | `u` + `g` → `ug` |
+| **Unknown token** | a placeholder for text not in the vocabulary | `[UNK]` |
+
+## 4. How it works
+
+### Three ways to cut text
+
+There are three main choices for what a "piece" should be.
+
+**Option A: whole words**
+
+```
+"unbelievable cats"  →  ["unbelievable", "cats"]
+```
+
+- ✅ Short sequences
+- ❌ The vocabulary gets huge: every word, plus every form of it ("cat", "cats", "catlike"...)
+- ❌ A new word, or a typo, can't be handled at all
+
+**Option B: single characters**
+
+```
+"cats"  →  ["c", "a", "t", "s"]
+```
+
+- ✅ Tiny vocabulary, and any word can be written
+- ❌ Sequences get very long
+- ❌ A single letter carries almost no meaning
+
+**Option C: subwords (what modern models use)**
+
+```
+"unbelievable cats"  →  ["un", "believ", "able", " cats"]
+```
+
+- ✅ Common words stay whole
+- ✅ Rare words can be split into smaller, reusable pieces. These pieces sometimes match meaningful word parts (like "un" or "able"), but not always.
+- ✅ Unfamiliar words can be built by combining smaller pieces, as long as those pieces are in the vocabulary. Byte-level tokenizers (Section 6) can represent any text at all.
+
+Subwords are the middle ground. They take the good parts of both other options.
+
+### Where the vocabulary comes from
+
+The tokenizer **learns** its vocabulary from a large amount of text before the model is trained. The most popular method is **Byte Pair Encoding (BPE)**, and the idea is very simple:
+
+> Start with single characters. Find the pair that appears next to each other most often. Glue it into one new token. Repeat.
+
+Frequent pieces of text end up as single tokens. Rare ones stay split.
+
+## 5. Try it yourself: BPE by hand
+
+> **Note:** This is a simplified BPE example. Real tokenizers may first split text into chunks, and they may handle bytes, spaces and special tokens differently. The core idea, repeatedly merging the most frequent pair, is the same.
+
+### The training text
+
+Imagine our whole training text contains only these five words, with these counts:
+
+| Word | How many times |
+|---|---|
+| hug | 10 |
+| pug | 5 |
+| pun | 12 |
+| bun | 4 |
+| hugs | 5 |
+
+### Start: split everything into characters
+
+```
+h u g      (×10)
+p u g      (×5)
+p u n      (×12)
+b u n      (×4)
+h u g s    (×5)
+```
+
+Starting vocabulary: `b, g, h, n, p, s, u` (7 tokens)
+
+### Round 1: find the most frequent neighbouring pair
+
+Count each pair of tokens that sit next to each other. A pair inside "hug" appears 10 times in the text, because "hug" appears 10 times, so it counts 10. That's why each count is weighted by how often its word appears:
+
+| Pair | Where it appears | Count |
+|---|---|---|
+| h u | hug (10) + hugs (5) | 15 |
+| **u g** | hug (10) + pug (5) + hugs (5) | **20** ← most frequent |
+| p u | pug (5) + pun (12) | 17 |
+| u n | pun (12) + bun (4) | 16 |
+| b u | bun (4) | 4 |
+| g s | hugs (5) | 5 |
+
+**Merge `u` + `g` → `ug`.** The words become:
+
+```
+h ug       (×10)
+p ug       (×5)
+p u n      (×12)
+b u n      (×4)
+h ug s     (×5)
+```
+
+Vocabulary: `b, g, h, n, p, s, u, ug` (8 tokens)
+
+### Round 2: count again, using the newly merged pieces
+
+`ug` is now one token, so pairs are counted between the new pieces.
+
+| Pair | Count |
+|---|---|
+| h ug | 10 + 5 = 15 |
+| p ug | 5 |
+| p u | 12 |
+| **u n** | 12 + 4 = **16** ← most frequent |
+| b u | 4 |
+| ug s | 5 |
+
+**Merge `u` + `n` → `un`.**
+
+```
+h ug       (×10)
+p ug       (×5)
+p un       (×12)
+b un       (×4)
+h ug s     (×5)
+```
+
+Vocabulary: `b, g, h, n, p, s, u, ug, un` (9 tokens)
+
+### Round 3: repeat
+
+Same process, one more time.
+
+| Pair | Count |
+|---|---|
+| **h ug** | 10 + 5 = **15** ← most frequent |
+| p ug | 5 |
+| p un | 12 |
+| b un | 4 |
+| ug s | 5 |
+
+**Merge `h` + `ug` → `hug`.**
+
+```
+hug        (×10)
+p ug       (×5)
+p un       (×12)
+b un       (×4)
+hug s      (×5)
+```
+
+Vocabulary: `b, g, h, n, p, s, u, ug, un, hug` (10 tokens)
+
+We could keep going, but let's stop here. The tokenizer has learned **3 merge rules, in this order**:
+
+```
+1.  u + g  → ug
+2.  u + n  → un
+3.  h + ug → hug
+```
+
+### Using the tokenizer on new words
+
+To tokenize a word in this simplified version, split it into characters, then apply the merge rules **in the order they were learned**. Rules learned earlier have higher priority.
+
+**"hugs"**
+
+```
+h u g s   →  rule 1  →  h ug s  →  rule 3  →  hug s
+Result: ["hug", "s"]
+```
+
+**"bugs"**, a word that was never in the training text:
+
+```
+b u g s   →  rule 1  →  b ug s   (rules 2 and 3 don't apply)
+Result: ["b", "ug", "s"]
+```
+
+The tokenizer handled a brand-new word by building it from known pieces. That's the big advantage of subwords.
+
+**"mug"**
+
+```
+m u g   →  "m" is not in the vocabulary!
+Result: ["[UNK]", "ug"]
+```
+
+The letter "m" never appeared in the training text, so the tokenizer has no token for it. Section 6 shows how real tokenizers avoid this problem.
+
+### From tokens to IDs
+
+Finally, each token is replaced by its position in the vocabulary:
+
+| Token | b | g | h | n | p | s | u | ug | un | hug |
+|---|---|---|---|---|---|---|---|---|---|---|
+| **ID** | 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 |
+
+```
+"hugs"  →  ["hug", "s"]       →  [9, 5]
+"bugs"  →  ["b", "ug", "s"]   →  [0, 7, 5]
+```
+
+These numbers are what the model actually receives.
+
+## 6. Variations and common mistakes
+
+### Variations (optional reading)
+
+You don't need these details to understand tokenization. They're here so the names are familiar when you meet them.
+
+- **Byte-level BPE** (used by GPT models): it starts from the 256 possible **bytes** instead of letters. Every possible text is made of bytes, so there is never an unknown token. This solves the "mug" problem.
+- **WordPiece** (used by BERT): another subword method. It learns its vocabulary with a different procedure from standard BPE. BERT marks pieces that continue a word with `##`, as in `["play", "##ing"]`.
+- **SentencePiece**: it treats spaces as a normal character (often shown as `▁`), so it works well for languages that don't use spaces between words.
+- **Special tokens**: extra tokens with special jobs, such as `[PAD]` (padding), `[BOS]` (start of text), `[EOS]` (end of text) and `[MASK]`.
+
+### Common mistakes
+
+- **"One token = one word."** Not true. For some English text and tokenizers, one token averages roughly three-quarters of a word, but the actual ratio varies considerably with the tokenizer, the language and the kind of text.
+- **Spaces matter.** `"cats"` and `" cats"` (with a leading space) are usually different tokens.
+- **Capital letters matter.** `"Cat"` and `"cat"` can be different tokens.
+- **Numbers are often split oddly.** `"2026"` might become `["20", "26"]`. This is one reason language models sometimes struggle with arithmetic.
+- **Not all languages cost the same.** Text in languages that were rare in the tokenizer's training data is split into more tokens. The same sentence can need many more tokens than its English version.
+
+## 7. Remember this
+
+- Tokenization turns **text → tokens → numbers (IDs)**.
+- Modern models use **subwords**: common words stay whole, and rare words are split into reusable pieces.
+- **BPE** learns its vocabulary by repeatedly **merging the most frequent pair**.
+- New text is tokenized by applying the learned merges **in order**.
+- Byte-level tokenizers can handle **any text**, with no unknown tokens.
+
+## 8. Going further
+
+Tokenization is the first step before a model like a transformer can work with text:
+
+```
+text  →  tokens  →  token IDs  →  embedding vectors  →  transformer
+                                  (one row per token)
+```
+
+The model has an **embedding table**: one row for every token in the vocabulary. Each row is a vector (a list of numbers) that the model **learns** during training. Each token ID is used to look up its row, called the token's **embedding**. Stacking those vectors gives a matrix with **one row per token**. That matrix is the input X in the [Attention Blocks](attention_blocks.md) guide, and the number of tokens is its number of rows, n.
+
+This is why tokenization matters so much: it decides how many tokens a text uses, which affects how much text fits in a model's context and how much it costs to process.
