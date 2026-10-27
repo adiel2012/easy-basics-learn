@@ -241,7 +241,7 @@ You don't need these details to understand tokenization. They're here so the nam
 
 - **Byte-level BPE** (used by many GPT-family tokenizers): it starts from the 256 possible **byte** values rather than directly from letters. Every possible text is made of bytes, so arbitrary input text can be represented without an unknown-token placeholder. This solves the "mug" problem.
 - **WordPiece** (used by BERT): another subword method. It learns its vocabulary with a different procedure from standard BPE. BERT marks pieces that continue a word with `##`, as in `["play", "##ing"]`.
-- **SentencePiece**: it treats spaces as a normal character (often shown as `▁`), so it works well for languages that don't use spaces between words.
+- **SentencePiece**: a tokenizer framework that can learn subword vocabularies directly from raw text, using methods such as BPE or Unigram. It often represents spaces with a visible marker such as `▁`, which helps it handle languages with different word-boundary conventions.
 - **Special tokens**: extra tokens with special jobs, such as `[PAD]` (padding), `[BOS]` (start of text), `[EOS]` (end of text) and `[MASK]`.
 
 ### Common mistakes
@@ -285,7 +285,7 @@ text  →  tokens  →  token IDs  →  embedding vectors  →  transformer
                                   (one row per token)
 ```
 
-The model has an **embedding table**: one row for every token in the vocabulary. Each row is a vector (a list of numbers) that the model **learned** during training. When the model processes text, each token ID simply selects its row, called the token's **embedding**. Nothing new is learned at this point; it's a lookup.
+The model has an **embedding table**: one row for every token in the vocabulary. Each row is a vector (a list of numbers) that the model **learned** during training. When the model processes text, each token ID simply selects its row, called the token's **embedding**. Nothing new is learned during the lookup itself. The transformer then processes these vectors through its neural-network layers to produce contextual representations.
 
 Stacking the embeddings of all the tokens in a text gives a matrix with **one row per token**. Depending on the model, this matrix is usually combined with positional information (where each token sits in the text) before entering the transformer. The result is the input X in the [Attention Blocks](attention_blocks.md) guide, and the number of tokens is its number of rows, n.
 
