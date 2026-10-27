@@ -2,7 +2,7 @@
 
 ## 1. In simple words
 
-A computer stores text as numbers (bytes), but a language model needs text in a different numeric form: a sequence of numbered pieces from a fixed list. **Tokenization** is the step that produces that sequence.
+Computers represent text using numbers called bytes. A language model needs text in a different numeric form: a sequence of numbered pieces from a fixed list. **Tokenization** is the step that produces that sequence.
 
 It works in two moves:
 
@@ -191,7 +191,7 @@ We could keep going, but let's stop here. The tokenizer has learned **3 merge ru
 
 ### Using the tokenizer on new words
 
-To tokenize new text in this simplified example, split it into characters and repeatedly apply the available merge with the **highest learned priority** (rules learned earlier have higher priority), until no learned merge can be applied. Here, that is the same as applying our three merge rules in their learned order whenever they match.
+To tokenize new text in this simplified example, split it into characters and repeatedly apply the available merge with the **highest learned priority** (the merge learned earliest has the highest priority). Stop when no learned merge can be applied. Here, that is the same as applying our three merge rules in their learned order whenever they match.
 
 **"hugs"**
 
@@ -250,7 +250,7 @@ You don't need these details to understand tokenization. They're here so the nam
 - **Spaces matter.** `"cats"` and `" cats"` (with a leading space) are usually different tokens.
 - **Capital letters matter.** `"Cat"` and `"cat"` can be different tokens.
 - **Numbers are often split oddly.** `"2026"` might become `["20", "26"]`. This is one reason language models sometimes struggle with arithmetic.
-- **Not all languages cost the same.** Text in languages that were rare in the tokenizer's training data is split into more tokens. The same sentence can need many more tokens than its English version.
+- **Not all languages cost the same.** Languages or writing systems that are poorly represented in a tokenizer's training data often require more tokens to express the same amount of text. The exact difference depends on the tokenizer and the text.
 
 ## 7. Remember this
 
