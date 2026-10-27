@@ -67,7 +67,7 @@ There are three main choices for what a "piece" should be.
 
 - ✅ Common words stay whole
 - ✅ Rare words can be split into smaller, reusable pieces. These pieces sometimes match meaningful word parts (like "un" or "able"), but not always.
-- ✅ Unfamiliar words can be built by combining smaller pieces, as long as those pieces are in the vocabulary. Byte-level tokenizers (Section 6) can represent any text at all.
+- ✅ Unfamiliar words can be built by combining smaller pieces, as long as those pieces are in the vocabulary. Byte-level tokenizers (Section 6) can represent arbitrary input text without needing an unknown-token placeholder.
 
 Subwords are the middle ground. They take the good parts of both other options.
 
@@ -191,7 +191,7 @@ We could keep going, but let's stop here. The tokenizer has learned **3 merge ru
 
 ### Using the tokenizer on new words
 
-To tokenize new text in this simplified example, split it into characters and repeatedly apply the available merge with the **highest learned priority** (rules learned earlier have higher priority). Here, that is the same as applying our three merge rules in their learned order whenever they match.
+To tokenize new text in this simplified example, split it into characters and repeatedly apply the available merge with the **highest learned priority** (rules learned earlier have higher priority), until no learned merge can be applied. Here, that is the same as applying our three merge rules in their learned order whenever they match.
 
 **"hugs"**
 
@@ -258,7 +258,7 @@ You don't need these details to understand tokenization. They're here so the nam
 - Modern models use **subwords**: common words stay whole, and rare words are split into reusable pieces.
 - **BPE** learns its vocabulary by repeatedly **merging the most frequent pair**.
 - New text is tokenized by applying the learned merges **in order**.
-- Byte-level tokenizers can handle **any text**, with no unknown tokens.
+- Byte-level tokenizers can represent **arbitrary text**, with no unknown tokens.
 
 ### Quick check
 
@@ -268,14 +268,13 @@ Suppose a tokenizer knows these tokens: `c, a, t, s, ca, at, cat`.
 2. Does token ID 7 mean the same thing in every tokenizer?
 3. Why might a byte-level tokenizer handle an unfamiliar character better than a character tokenizer with an incomplete vocabulary?
 
-<details>
-<summary>Show answers</summary>
+Try answering before reading on.
 
-1. **Yes.** It can combine the pieces it has, for example `["cat", "s"]`.
+### Answers
+
+1. **Yes.** One possible segmentation is `["cat", "s"]`, assuming the tokenizer's rules permit it. Having the right pieces makes it possible; the tokenizer's encoding rules decide the exact split.
 2. **No.** Token IDs depend on each tokenizer's own vocabulary. ID 7 can be a different token in every tokenizer.
 3. **Every character is made of bytes**, and a byte-level tokenizer always knows all 256 byte values. So it can represent the character through its bytes, even if it has never seen that character before.
-
-</details>
 
 ## 8. Going further
 
@@ -286,6 +285,6 @@ text  →  tokens  →  token IDs  →  embedding vectors  →  transformer
                                   (one row per token)
 ```
 
-The model has an **embedding table**: one row for every token in the vocabulary. Each row is a vector (a list of numbers) that the model **learns** during training. Each token ID is used to look up its row, called the token's **embedding**. Depending on the model, these token embeddings are usually combined with positional information (where each token sits in the text) before entering the transformer. Stacking those vectors gives a matrix with **one row per token**. That matrix is the input X in the [Attention Blocks](attention_blocks.md) guide, and the number of tokens is its number of rows, n.
+The model has an **embedding table**: one row for every token in the vocabulary. Each row is a vector (a list of numbers) that the model **learned** during training. When the model processes text, each token ID simply selects its row, called the token's **embedding**. Nothing new is learned at this point; it's a lookup. Depending on the model, these token embeddings are usually combined with positional information (where each token sits in the text) before entering the transformer. Stacking those vectors gives a matrix with **one row per token**. That matrix is the input X in the [Attention Blocks](attention_blocks.md) guide, and the number of tokens is its number of rows, n.
 
 This is why tokenization matters so much: it decides how many tokens a text uses, which affects how much text fits in a model's context and how much it costs to process.
