@@ -228,7 +228,7 @@ A = softmax( Q Kᵀ / √d_k )
 
 Here d_k = 1, so √d_k = 1 and there's nothing to divide by.
 
-We only need the **first row**, for [CLS]. Its query is q = 1, so its score against each key is just 1 × that key:
+The full attention matrix would be 5 × 5, one row per token. This is a **partial calculation**: we only compute the **first row**, for [CLS], because that's the row used for classification. The other rows are computed the same way. Its query is q = 1, so its score against each key is just 1 × that key:
 
 ```
           [CLS]  P1   P2   P3   P4
@@ -262,29 +262,37 @@ The output for [CLS] is the weighted sum of all the values:
 
 ```
 o_CLS = 0.0150·0 + 0.0150·3 + 0.8185·4 + 0.1108·3 + 0.0408·2
-      = 0     + 0.045   + 3.274   + 0.332   + 0.082
-      ≈ 3.73
+      ≈ 0     + 0.045   + 3.274   + 0.332   + 0.082
+      ≈ 3.733
 ```
+
+Using the exact (unrounded) softmax weights also gives ≈ 3.733.
 
 **What just happened?** The [CLS] token compared its query with every patch's key, turned the scores into weights, and took a weighted mix of the patches' values. That's how it gathers information from the whole image. Here it listened mostly to P2.
 
-The output is a single number only because this toy head has d_v = 1. In a real ViT:
+#### From one head to a full transformer block
 
-- many heads run in parallel, and their outputs are joined and projected back to width d
-- each block adds residual connections, normalization and a feed-forward network
-- many blocks are stacked
+Our output, 3.733, is a **single number (a scalar)**, because this toy head has d_v = 1. It is **not yet** a full 3-number token representation. Here's how a complete block turns head outputs back into width d = 3, using the toy sizes:
 
-None of this changes the central idea you just calculated.
+| Step | What happens | Shape |
+|---|---|---|
+| 1. Heads | Run, say, 3 heads in parallel, each like ours (d_v = 1), each with its own W_Q, W_K, W_V | 3 outputs of 5 × 1 |
+| 2. Concatenate | Put the head outputs side by side | 5 × 3 |
+| 3. Project | Multiply by an output matrix W_O (3 × 3) | 5 × 3 |
+| 4. Residual | Add X back: X + result | 5 × 3 |
+| 5. Feed-forward | Normalize, then pass each row through a small network, and add the residual again | 5 × 3 |
+
+The block's output has the same shape as X, 5 × 3, so blocks can be stacked. A real ViT-Base stacks 12 of them. The [CLS] value we calculated, 3.733, is one entry in step 1. The central idea, [CLS] gathering information through attention, is exactly what you just computed.
 
 #### After the encoder
 
-Working through all of those extra parts by hand would take pages, so for the last step we'll use a separate, made-up output. Suppose that after the full encoder, the [CLS] row is:
+> ⚠️ **Separate example.** Working through all the blocks by hand would take pages, so the classification below uses a **made-up encoder output**. It is **not** calculated from Steps 7A–7D. Treat it as a new starting point, not a continuation.
+
+Suppose that after the full encoder, the [CLS] row is:
 
 ```
 z = [1.0, 0.5, -0.5]    (1 × 3)
 ```
-
-This is only an illustration, not calculated from the steps above.
 
 ### Steps 8–9: classify
 
