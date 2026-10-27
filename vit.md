@@ -12,7 +12,7 @@ Transformers were built for text, where the input is a sequence of tokens. A ViT
 
 **Analogy: a jigsaw puzzle.** Imagine cutting a photo into puzzle pieces and laying them out in a row. Each piece on its own shows only a small part of the picture. By comparing every piece with every other piece, the model works out what the whole picture shows. That comparing is exactly what attention does.
 
-That's why the original paper is called *"An Image is Worth 16x16 Words"*: each 16×16-pixel patch plays the role of one word.
+That's why the original paper is called *"An Image is Worth 16×16 Words"*: each 16×16-pixel patch plays the role of one word.
 
 ```
 image  →  patches  →  patch vectors  →  transformer  →  "cat"
@@ -68,7 +68,7 @@ N = (H / P) × (W / P)
 
 **Step 5: add a [CLS] token.** One extra learned vector is put at the front of the sequence. It doesn't come from any patch. Its job is to collect information from all the patches through attention, so that at the end it summarizes the whole image.
 
-**Step 6: add position embeddings.** Attention on its own ignores order, so without help the model wouldn't know which patch was top-left and which was bottom-right. A learned position vector is added to each row.
+**Step 6: add position embeddings.** Self-attention does not inherently encode where a patch was in the image, so without help the model wouldn't know which patch was top-left and which was bottom-right. ViT adds a learned position vector to each row, so the model can use the spatial arrangement.
 
 **Step 7: transformer encoder.** The sequence goes through a stack of standard transformer blocks, the same ones explained in the [Attention Blocks](attention_blocks.md) guide. There is **no causal mask**: every patch can attend to every other patch, because nothing is being predicted "in order".
 
@@ -262,27 +262,42 @@ The output for [CLS] is the weighted sum of all the values:
 
 ```
 o_CLS = 0.0150·0 + 0.0150·3 + 0.8185·4 + 0.1108·3 + 0.0408·2
-      ≈ 0     + 0.045   + 3.274   + 0.332   + 0.082
+      = 0     + 0.0450  + 3.2740  + 0.3324  + 0.0816
+      = 3.7330
       ≈ 3.733
 ```
 
-Using the exact (unrounded) softmax weights also gives ≈ 3.733.
+Using the exact (unrounded) softmax weights gives 3.7328, which also rounds to 3.733.
 
 **What just happened?** The [CLS] token compared its query with every patch's key, turned the scores into weights, and took a weighted mix of the patches' values. That's how it gathers information from the whole image. Here it listened mostly to P2.
 
 #### From one head to a full transformer block
 
-Our output, 3.733, is a **single number (a scalar)**, because this toy head has d_v = 1. It is **not yet** a full 3-number token representation. Here's how a complete block turns head outputs back into width d = 3, using the toy sizes:
+Our output, 3.733, is a **single number (a scalar)**, because this toy head has d_v = 1. It is **not yet** a full 3-number token representation.
 
-| Step | What happens | Shape |
-|---|---|---|
-| 1. Heads | Run, say, 3 heads in parallel, each like ours (d_v = 1), each with its own W_Q, W_K, W_V | 3 outputs of 5 × 1 |
-| 2. Concatenate | Put the head outputs side by side | 5 × 3 |
-| 3. Project | Multiply by an output matrix W_O (3 × 3) | 5 × 3 |
-| 4. Residual | Add X back: X + result | 5 × 3 |
-| 5. Feed-forward | Normalize, then pass each row through a small network, and add the residual again | 5 × 3 |
+ViT uses **pre-normalization**: each of the two sublayers starts with a LayerNorm and ends with a residual addition. Here's a complete block with the toy sizes:
 
-The block's output has the same shape as X, 5 × 3, so blocks can be stacked. A real ViT-Base stacks 12 of them. The [CLS] value we calculated, 3.733, is one entry in step 1. The central idea, [CLS] gathering information through attention, is exactly what you just computed.
+| Step | What happens | Toy shape | ViT-Base shape |
+|---|---|---|---|
+| 1. LayerNorm | Normalize each row of X | 5 × 3 | 197 × 768 |
+| 2. Heads | Run the heads in parallel, each with its own W_Q, W_K, W_V | 3 heads, each 5 × 1 | 12 heads, each 197 × 64 |
+| 3. Concatenate | Put the head outputs side by side | 5 × 3 | 197 × 768 |
+| 4. Project | Multiply by the output matrix W_O | (3 × 3) → 5 × 3 | (768 × 768) → 197 × 768 |
+| 5. Residual | Add the block's input: X₁ = X + result | 5 × 3 | 197 × 768 |
+| 6. LayerNorm | Normalize each row of X₁ | 5 × 3 | 197 × 768 |
+| 7. MLP | Pass each row through a small two-layer network | 5 × 3 | 197 × 768 (hidden width 3072) |
+| 8. Residual | X₂ = X₁ + MLP output | 5 × 3 | 197 × 768 |
+
+In short:
+
+```
+X₁ = X  + MultiHeadAttention(LayerNorm(X))
+X₂ = X₁ + MLP(LayerNorm(X₁))
+```
+
+The block's output has the same shape as its input, so blocks can be stacked. ViT-Base stacks 12 of them.
+
+The [CLS] value we calculated, 3.733, is one entry from step 2. (To keep the numbers simple, our hand calculation skipped the LayerNorm in step 1 and used X directly.) The central idea, [CLS] gathering information through attention, is exactly what you just computed.
 
 #### After the encoder
 
@@ -389,7 +404,7 @@ Try answering before reading on.
 
 1. **N = (64/8) × (64/8) = 8 × 8 = 64 patches.** With the [CLS] token, the sequence has **65** tokens.
 2. **8 × 8 × 3 = 192** numbers (three channels: red, green, blue).
-3. **Attention ignores order.** Without position embeddings, the model couldn't tell which patch came from where; a shuffled image would look the same to it.
+3. **Self-attention does not inherently encode position.** Without position embeddings, the model couldn't tell which patch came from where; the learned position embeddings let it use the spatial arrangement.
 4. **The [CLS] row**, the first row.
 
 ## 8. Going further
@@ -410,6 +425,6 @@ Cutting into patches and multiplying by W_E is usually done in one step with a *
 
 ### Learn more
 
-- 📖 [An Image is Worth 16x16 Words](https://arxiv.org/abs/2010.11929) (Dosovitskiy et al.): the original ViT paper
+- 📖 [An Image is Worth 16×16 Words](https://arxiv.org/abs/2010.11929) (Dosovitskiy et al.): the original ViT paper
 - 📖 [Vision Transformer (ViT)](https://huggingface.co/docs/transformers/model_doc/vit) (Hugging Face docs): overview, the [CLS] token, position embeddings, and how to use a pretrained ViT
 - 📖 [vit-pytorch README](https://github.com/lucidrains/vit-pytorch/blob/main/README.md) (lucidrains): a short, readable ViT implementation, with many later variants
