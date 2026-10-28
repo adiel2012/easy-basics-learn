@@ -93,6 +93,18 @@ It's simpler than it looks:
 
 ### Phase 3: backward pass
 
+**The whole backward pass is three moves:**
+
+| Move | Formula | Question it answers |
+|---|---|---|
+| 1. Output error | δz = p − y | How should the output logit change to reduce the loss? |
+| 2. Send the error back | δaⱼ = δz · vⱼ · ReLU′(aⱼ) | How much did each hidden neuron contribute to the loss? |
+| 3. Weight gradients | ∂L/∂wᵢⱼ = δaⱼ · xᵢ  (and ∂L/∂vⱼ = δz · hⱼ) | Multiply the receiving neuron's error signal by the input to that weight. |
+
+ReLU′(a) is ReLU's derivative: 1 if a > 0, otherwise 0.
+
+The rest of this phase shows where these formulas come from.
+
 **The chain rule** says: to find how L depends on something deep inside the network, multiply the local derivatives along the path between them. For example, v₁ affects L only through z, and z affects L only through p:
 
 ```
@@ -148,7 +160,7 @@ Hidden layer:
   ∂L/∂d₁  = δa₁             ∂L/∂d₂  = δa₂
 ```
 
-The pattern: **gradient of a weight = (error signal at the neuron it feeds) × (the value flowing into that weight)**.
+The pattern: **weight gradient = error signal at the neuron the weight connects to × the input to that weight**.
 
 ### Phase 4: update (gradient descent)
 
@@ -281,7 +293,7 @@ Both a₁ = 0.6 and a₂ = 0.5 are positive, so ReLU passes the error through un
 ∂L/∂d₂  = δa₂      =  0.294
 ```
 
-In this example, w₂₁ and w₂₂ get **zero** gradient because their input x₂ is 0. Changing them a little wouldn't change this answer at all.
+w₂₁ and w₂₂ get **zero** gradient. Because x₂ = 0, these weights make no contribution to this forward pass, so their gradients are zero for this example. Other examples with x₂ ≠ 0 can give them nonzero gradients.
 
 **All 9 gradients**
 
@@ -347,6 +359,8 @@ L            = −ln(0.664)     ≈ 0.409
 
 The prediction moved toward the correct answer (1), and the loss dropped. **That's learning.**
 
+With a suitable learning rate, an update should reduce the loss locally, as it did here. It's not guaranteed: with a learning rate that's too large, the loss can sometimes go up. That's why the loss is monitored during training.
+
 This step used **one** example. To learn all of XOR, the same process runs over all four examples, many times; see [Appendix B](#appendix-b-training-on-all-of-xor).
 
 ## 6. Common mistakes
@@ -362,7 +376,7 @@ This step used **one** example. To learn all of XOR, the same process runs over 
 - Training repeats **forward → loss → backward → update**.
 - Backpropagation uses the **chain rule**, from the output back, to calculate every gradient.
 - With sigmoid + cross-entropy, the output error is simply **δz = p − y**.
-- Each weight's gradient = **(error at the neuron it feeds) × (its input value)**.
+- Weight gradient = **error signal at the neuron the weight connects to × the input to that weight**.
 - Gradient descent: **θ ← θ − η · ∂L/∂θ**.
 
 ### Quick check
@@ -506,7 +520,7 @@ The targets are 0, 1, 1, 0, and after training all four answers are right. The f
 
 **Run 2** changes only w₂₁ and w₂₂, to 0.2 and −0.1. In this run, learning stalls: the average loss stays at 0.693 from epoch 100 to 5000, and every prediction approaches 0.5 (by epoch 500, all four print as 0.5 at 3 decimals). (A loss of 0.693 = ln 2 is exactly what predicting 0.5 for everything gives.)
 
-This exact outcome depends on all the details: the starting weights, the learning rate and averaging the gradients. The general lesson is that **some starting points lead to slow learning or stuck neurons**, especially in a network this small. Common remedies: different random starting weights, more hidden neurons, or a different learning rate.
+Here, training converges to a constant prediction of 0.5 for every example. This is a particular outcome of this initialization and training setup (the starting weights, the learning rate, averaging the gradients), not typical training behavior. The general lesson is that **some starting points lead to slow learning or stuck neurons**, especially in a network this small. Common remedies: different random starting weights, more hidden neurons, or a different learning rate.
 
 ### ReLU can block the error
 
