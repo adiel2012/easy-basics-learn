@@ -17,7 +17,25 @@ An LLM writes **one token at a time**:
 Result: "I love cats"
 ```
 
-**[EOS]** means "end of sequence". It's a special token the model produces when it's finished.
+**[EOS]** means "end of sequence". It's a special token that signals the end of the text. Generation can also stop when a length limit or another stopping rule is reached.
+
+The loop, as a picture:
+
+```
+        ┌──────────────────────────────────────┐
+        ▼                                      │
+  read the text so far                         │
+        │                                      │
+  score every possible next token              │
+        │                                      │
+  choose one token                             │
+        │                                      │
+  [EOS] or length limit? ── no ──▶ add the token to the text
+        │
+       yes
+        ▼
+      stop
+```
 
 **Analogy: phone autocomplete, on repeat.** Your phone suggests the next word as you type. Imagine always tapping the suggestion, then letting the phone suggest the next one, and the next. That's an LLM writing. The difference is that an LLM reads *everything* written so far, not just the last word, before each suggestion.
 
@@ -30,8 +48,10 @@ That's the whole process. The rest of this guide looks inside the "predict next 
 
 ## 2. What you need to know first
 
-- **[Tokenization](tokenization.md)**: how text becomes token IDs and embeddings.
-- **[Attention Blocks](attention_blocks.md)**: how tokens share information. This guide explains the parts it uses as it goes, so you can come back to the attention guide later.
+Nothing is required: this guide explains what it uses. For more depth:
+
+- **[Tokenization](tokenization.md)**: how text becomes token IDs.
+- **[Attention Blocks](attention_blocks.md)**: how tokens share information.
 
 ## 3. How one token is predicted
 
@@ -43,12 +63,13 @@ text → token IDs → embeddings → transformer → last row → logits → pr
 
 Each stage in one or two sentences:
 
-1. **Token IDs and embeddings.** The text is split into tokens, and each token is turned into a vector (a list of numbers). See [Tokenization](tokenization.md).
-2. **Transformer.** The vectors pass through the model's layers. Inside, **attention** lets each token gather information from the tokens before it.
-3. **Last row.** Only the vector of the **last token** is used for the prediction. It has seen the whole text, so it carries everything needed to guess what comes next.
-4. **Logits: raw scores.** The model gives a score to **every** token in its vocabulary. A higher score means the model prefers that token.
-5. **Probabilities.** **Softmax** turns the scores into probabilities between 0 and 1 that add up to 1.
-6. **Chosen token.** A **decoding rule** picks one token. The simplest is **greedy decoding**: pick the most likely token.
+1. **Token IDs.** **Tokenization** splits the text into tokens and gives each one a number, its ID. See [Tokenization](tokenization.md).
+2. **Embeddings.** Each ID is used to look up a vector (a list of numbers) in the model's embedding table.
+3. **Transformer.** The vectors pass through the model's layers. Inside, **attention** lets each token gather information from the tokens before it.
+4. **Last row.** Only the vector of the **last token** is used for the prediction. Through attention, it has gathered information from all the tokens before it. A final output layer turns this vector into scores.
+5. **Logits: raw scores.** The model gives a score to **every** token in its vocabulary. A higher logit becomes a higher probability in the next stage.
+6. **Probabilities.** **Softmax** turns the scores into probabilities between 0 and 1 that add up to 1.
+7. **Chosen token.** A **decoding rule** picks one token. The simplest is **greedy decoding**: pick the most likely token.
 
 > **Key distinction:** logits are *scores*. Softmax turns them into *probabilities*. Decoding *chooses* a token. These are three different stages.
 
@@ -72,7 +93,7 @@ Each stage in one or two sentences:
 
 **What the model does with them:**
 
-1. **Attention:** the last token compares itself with every token so far (including itself) and takes a weighted mix of them. To keep it simple, each token's query, key and value are just its embedding.
+1. **Attention:** in this toy model, the last token's embedding acts as its **query**, and each token's embedding acts as its **key** and **value**. Query-key scores decide how much each value contributes to a weighted mix. (Real transformers first transform the embeddings with learned query, key and value matrices.)
 2. **Residual:** the mix is added to the last token's own embedding. Call the result **h**.
 3. **Scores:** each token's logit is the dot product of h with that token's embedding. A token whose embedding "points the same way" as h gets a high score.
 
@@ -139,7 +160,7 @@ Softmax gives probabilities. A **decoding rule** decides how to use them.
 ### Greedy decoding
 
 - **What it is:** always pick the most likely token.
-- **Why it matters:** it's simple and predictable: the same prompt always gives the same answer.
+- **Why it matters:** it's simple and predictable. With the same model, prompt and settings (and deterministic hardware execution), it produces the same answer every time. If two tokens tie, a fixed tie-breaking rule decides.
 - **Example:** in Step 1, greedy picks "cats" (0.330).
 
 ### Sampling
@@ -151,7 +172,7 @@ Softmax gives probabilities. A **decoding rule** decides how to use them.
 ### Temperature
 
 - **What it is:** a knob that reshapes the probabilities before sampling. The logits are divided by the temperature T before softmax.
-- **Why it matters:** it controls how adventurous the model is.
+- **Why it matters:** it controls how **sharp** the probabilities are. Low T concentrates probability on the top tokens; high T spreads it out. It doesn't guarantee better or more creative text, only more or less variety.
 - **Example:** the Step 1 probability of "cats":
 
 | Temperature | Effect | P(cats) |
@@ -178,11 +199,11 @@ The full numbers are in the [Appendix](#appendix-full-arithmetic).
 - **Prefill:** the model reads the **whole prompt at once**. It computes all prompt positions in parallel, and the **last position** supplies the logits for the first new token.
 - **Decode:** the model then generates **one token at a time**. Each step depends on the token chosen just before, so these steps can't run in parallel.
 
-That's why a long prompt is read quickly, but the answer appears word by word.
+So prompt tokens can be processed in parallel, while generated tokens come out one after another, which is why the answer appears word by word. Long prompts still take real time and memory to process.
 
 ### The KV cache
 
-- **What it is:** a saved copy of each token's **keys and values**, the vectors that later tokens attend to.
+- **What it is:** a saved copy of each token's **keys and values**, the vectors that later tokens attend to. The cache stores them for **every layer** of the model.
 - **Why it matters:** without it, every decode step would recompute them for the whole text.
 - **Example:** in Step 2, "cats" attended to "I" and "love". Their keys and values were already computed in Step 1, and they don't change, because earlier tokens never look at later ones. So only "cats" needs new ones.
 
@@ -212,12 +233,16 @@ The cost is memory: the cache grows with every token.
 2. Logits are [2, 2]. What are the probabilities after softmax?
 3. What happens to sampling if the temperature is very low?
 
-### Answers
+Try the exercises and the quick checks before reading on.
+
+---
+
+### Check your answers
 
 **Quick checks**
 
 1. **(b)** It stops generating. [EOS] is the stop signal. The weights never change during inference.
-2. **The last row**, for "love". It's the last token, so it has seen the whole text.
+2. **The last row**, for "love". It's the last token, so through attention it has gathered information from all the tokens before it.
 3. **Greedy always chooses cats**, the highest probability. **Sampling** picks cats about 60% of the time and dogs about 40%.
 4. **"I" and "love" come from the cache** (computed in Step 1). Only **"cats"** needs new keys and values.
 
@@ -284,15 +309,17 @@ The model continues the text after the assistant marker, one token at a time, un
 
 ## Appendix: full arithmetic
 
-*Optional. For readers who want to verify every number. Values are rounded to 3 decimals, and each step uses the rounded values shown.*
+*Optional. For readers who want to verify every number. All values are **approximate**: they are rounded to 3 decimals, and each step uses the rounded values shown, so you can reproduce them by hand. Recomputing at full precision can differ in the last digit.*
 
 ### The model, precisely
 
+This is a deliberately simplified model: tied embeddings, and no learned query, key or value projections.
+
 - Query, key and value of each token = its embedding (W_Q, W_K, W_V are identity matrices).
-- Attention scores are divided by √d = √2 ≈ 1.414, then passed through softmax.
+- Attention scores are divided by √d_k = √2 ≈ 1.414 (the key width is 2), then passed through softmax. This scaling keeps scores from growing too large as the key width grows, which would make softmax put almost all weight on one token.
 - A **causal mask** lets each token attend only to itself and earlier tokens. For the last token, nothing is blocked.
 - h = (last token's embedding) + (attention output).
-- logit(token) = h · embedding(token). Reusing the embedding table this way is called **tied embeddings**.
+- logit(token) = h · embedding(token). Reusing the embedding table as the output layer is called **tied embeddings**. Many real models instead have a separate, learned output layer.
 - Left out: position embeddings, layer normalization, the feed-forward network, multiple heads and multiple layers.
 
 ### Step 1: "I love"
