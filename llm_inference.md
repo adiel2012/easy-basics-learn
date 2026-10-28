@@ -37,7 +37,7 @@ The loop, as a picture:
       stop
 ```
 
-**Analogy: phone autocomplete, on repeat.** Your phone suggests the next word as you type. Imagine always tapping the suggestion, then letting the phone suggest the next one, and the next. That's an LLM writing. The difference is that an LLM reads *everything* written so far, not just the last word, before each suggestion.
+**Analogy: phone autocomplete, on repeat.** Your phone suggests the next word as you type. Imagine always tapping the suggestion, then letting the phone suggest the next one, and the next. That's an LLM writing. Like autocomplete, an LLM predicts what comes next, but it can use a much richer context: all the text so far.
 
 That's the whole process. The rest of this guide looks inside the "predict next token" box.
 
@@ -95,7 +95,7 @@ Each stage in one or two sentences:
 
 1. **Attention:** in this toy model, the last token's embedding acts as its **query**, and each token's embedding acts as its **key** and **value**. Query-key scores decide how much each value contributes to a weighted mix. (Real transformers first transform the embeddings with learned query, key and value matrices.)
 2. **Residual:** the mix is added to the last token's own embedding. Call the result **h**.
-3. **Scores:** each token's logit is the dot product of h with that token's embedding. A token whose embedding "points the same way" as h gets a high score.
+3. **Scores:** each token's logit is the dot product of h with that token's embedding. The dot product depends on both how well the two vectors line up and how long they are; a higher dot product gives a higher logit.
 
 ### Step 1: what comes after "I love"?
 
@@ -211,7 +211,7 @@ So prompt tokens can be processed in parallel, while generated tokens come out o
 |---|---|---|
 | 1 (prefill) | I, love | I, love (saved) |
 | 2 (decode) | I, love, cats | cats only |
-| 100 | all 101 tokens | 1 new token |
+| When the text has 101 tokens | all 101 tokens | 1 new token |
 
 The cost is memory: the cache grows with every token.
 
@@ -280,7 +280,7 @@ The model continues the text after the assistant marker, one token at a time, un
 
 - **[Tokenization](tokenization.md)**: the first step (text → IDs) and the last (IDs → text).
 - **[Attention Blocks](attention_blocks.md)**: what happens inside each layer, including the causal mask.
-- **[Vision Transformer (ViT)](vit.md)**: the same transformer used on images. ViT classifies in one pass, with no generation loop.
+- **[Vision Transformer (ViT)](vit.md)**: the same transformer used on images. A standard image-classification ViT typically produces its class prediction in one forward pass, with no generation loop.
 
 ### Short glossary
 
