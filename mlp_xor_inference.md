@@ -94,6 +94,95 @@ sigmoid(z) = 1 / (1 + e^(−z))          (e ≈ 2.718)
 
 **Answer:** if the probability is at least 0.5, answer **1**; otherwise answer **0**.
 
+### The formulas
+
+**Symbols**
+
+| Symbol | Meaning | Value in our network |
+|---|---|---|
+| x₁, x₂ | the two inputs | 0 or 1 |
+| w₁₁, w₂₁ | weights from x₁ and x₂ into h₁ | 1, 1 |
+| w₁₂, w₂₂ | weights from x₁ and x₂ into h₂ | 1, 1 |
+| d₁, d₂ | biases of h₁ and h₂ | 0, −1 |
+| v₁, v₂ | weights from h₁ and h₂ into the output | 4, −8 |
+| c | bias of the output | −2 |
+| a₁, a₂ | hidden values before ReLU | |
+| h₁, h₂ | hidden values after ReLU | |
+| z | output logit | |
+| p | output probability | |
+| ŷ | the answer (0 or 1) | |
+
+**Step 1: hidden layer, mix**
+
+```
+a₁ = w₁₁·x₁ + w₂₁·x₂ + d₁          →   a₁ = x₁ + x₂
+a₂ = w₁₂·x₁ + w₂₂·x₂ + d₂          →   a₂ = x₁ + x₂ − 1
+```
+
+**Step 2: ReLU**
+
+```
+ReLU(a) = max(0, a)
+
+h₁ = ReLU(a₁) = max(0, a₁)
+h₂ = ReLU(a₂) = max(0, a₂)
+```
+
+**Step 3: output layer, mix**
+
+```
+z = v₁·h₁ + v₂·h₂ + c               →   z = 4·h₁ − 8·h₂ − 2
+```
+
+**Step 4: sigmoid**
+
+```
+σ(z) = 1 / (1 + e^(−z))
+
+p = σ(z)
+```
+
+**Step 5: decision**
+
+```
+ŷ = 1   if p ≥ 0.5
+ŷ = 0   if p < 0.5
+```
+
+(Because σ(0) = 0.5, this is the same as: ŷ = 1 if z ≥ 0, otherwise 0.)
+
+**Everything in one formula**
+
+```
+p = σ( v₁·max(0, w₁₁x₁ + w₂₁x₂ + d₁) + v₂·max(0, w₁₂x₁ + w₂₂x₂ + d₂) + c )
+```
+
+With our weights:
+
+```
+p = σ( 4·max(0, x₁ + x₂) − 8·max(0, x₁ + x₂ − 1) − 2 )
+```
+
+**Matrix form** (used in Section 5 for all inputs at once)
+
+```
+x  = [x₁, x₂]                       1 × 2    (one input as a row)
+
+W₁ = [[w₁₁, w₁₂],    = [[1, 1],     2 × 2    (column j = weights into hⱼ)
+      [w₂₁, w₂₂]]       [1, 1]]
+b₁ = [d₁, d₂]        = [0, −1]      1 × 2
+
+W₂ = [[v₁],          = [[ 4],       2 × 1
+      [v₂]]             [−8]]
+b₂ = c               = −2
+
+h = ReLU(x W₁ + b₁)                 1 × 2
+z = h W₂ + b₂                       1 × 1
+p = σ(z)                            1 × 1
+```
+
+All together: **p = σ( ReLU(x W₁ + b₁) W₂ + b₂ )**.
+
 ## 5. Try it yourself: inference by hand
 
 > All four inputs are worked out in full, with no steps skipped. Results are rounded to 3 decimals.
@@ -301,7 +390,15 @@ Check each new point against z = 4·h₁ − 8·h₂ − 2:
 
 ### Doing all four at once (matrix form)
 
-Real code processes many inputs together. Stack the inputs as the rows of a matrix X:
+Real code processes many inputs together. The formulas are the same as in Section 4, with the single row x replaced by a matrix X that has one row per input:
+
+```
+H = ReLU(X W₁ + b₁)
+z = H W₂ + b₂
+P = σ(z)
+```
+
+Stack the inputs as the rows of a matrix X:
 
 ```
 X = [[0, 0],
@@ -469,6 +566,20 @@ probability  = 1 / 1.135    ≈ 0.881
 - The output **logit** goes through **sigmoid** to become a **probability**, and a **threshold** turns it into an answer.
 - XOR can't be solved by one straight line; the **hidden layer** moves the points so one line works.
 - Without a **non-linear activation**, extra layers add nothing.
+
+### Formula sheet
+
+```
+Hidden mix:     a = x W₁ + b₁
+ReLU:           h = max(0, a)
+Output mix:     z = h W₂ + b₂
+Sigmoid:        p = σ(z) = 1 / (1 + e^(−z))
+Decision:       ŷ = 1 if p ≥ 0.5, else 0
+
+All in one:     p = σ( ReLU(x W₁ + b₁) W₂ + b₂ )
+Our network:    p = σ( 4·max(0, x₁ + x₂) − 8·max(0, x₁ + x₂ − 1) − 2 )
+Batch:          P = σ( ReLU(X W₁ + b₁) W₂ + b₂ ),   X is n × 2, P is n × 1
+```
 
 ### Quick check
 
