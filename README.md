@@ -24,6 +24,7 @@ Each guide starts from zero and builds up one small step at a time. If something
 | Information theory | [Cross-Entropy](cross_entropy.md) | How well predicted probabilities match real outcomes, measured as average surprise in bits |
 | Information theory | [KL Divergence](kl_divergence.md) | The extra bits you pay for using a wrong probability distribution |
 | Probability | [Bayesian Inference](bayesian_inference.md) | How to update a belief when new evidence arrives |
+| Probability | [Expected Value and Variance](expected_value_variance.md) | Where a random number lands on average, and how far it tends to stray from that average |
 
 ## Learning path: information theory
 
