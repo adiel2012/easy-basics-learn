@@ -60,10 +60,11 @@ Every time the program does math, it remembers:
 If you chain several operations together, you get a graph of connected steps. For example:
 
     a ──┐
-        ├── (*) ──► c ──┐
-    b ──┘               ├── (+) ──► d
-                        │
-    e ──────────────────┘
+        ├── [ * ] ──► c ──┐
+    b ──┘                 ├── [ + ] ──► d
+    e ────────────────────┘
+
+Here `c = a * b` and `d = c + e`. The `+` node receives both `c` and `e`.
 
 Autograd records this graph while the forward calculation runs. Then, to find gradients, it walks **backwards** through the graph. This is called **backpropagation**.
 
@@ -165,7 +166,31 @@ def tanh(self):
     return out
 ```
 
-`tanh` squashes any number into the range -1 to 1. Neural networks use functions like this to add "bend" to their behaviour. The code also includes `relu`, `exp`, and `log`, which follow the same pattern.
+`tanh` squashes any number into the range -1 to 1. Neural networks use functions like this to add "bend" to their behaviour.
+
+### Sigmoid
+
+```python
+def sigmoid(self):
+    x = self.data
+    # numerically stable form: avoids overflow in exp() for large |x|
+    if x >= 0:
+        s = 1.0 / (1.0 + math.exp(-x))
+    else:
+        e = math.exp(x)
+        s = e / (1.0 + e)
+    out = Value(s, (self,), "sigmoid")
+
+    def _backward():
+        self.grad += s * (1 - s) * out.grad
+
+    out._backward = _backward
+    return out
+```
+
+`sigmoid` squashes any number into the range 0 to 1, so its output can be read as a probability. It is used at the output of the XOR network later in this guide.
+
+The code also includes `relu`, `exp`, and `log`, which follow the same pattern.
 
 ### The `backward()` method: the engine
 
@@ -193,7 +218,7 @@ This is the heart of the program. It does three things:
 2. **Start at the end.** The final output's gradient is set to `1.0`, because the output's change with respect to itself is 1.
 3. **Walk backwards.** It reverses that order, so the final output is processed first and gradients flow toward the original inputs. Each value runs its `_backward()` function.
 
-The order matters. Because the output is processed first, every downstream operation has added its gradient to a value before that value passes its accumulated gradient farther backward.
+The order matters. When a value is processed, all operations that use it have already contributed their gradients. It can now pass its accumulated gradient farther backward.
 
 ---
 
@@ -310,7 +335,7 @@ Training repeats the same three steps many times:
 
        weight = weight - learning_rate × gradient
 
-   If a gradient is positive, the loss rises as the weight rises, so we decrease the weight. If it is negative, we increase the weight. The **learning rate** controls how big each step is.
+   If a gradient is positive, a sufficiently small increase in the weight would increase the loss locally, so gradient descent moves the weight in the opposite direction. A step that is too large can still increase the loss, which is why the learning rate matters. If it is negative, we increase the weight. The **learning rate** controls how big each step is.
 
 Repeat for many **epochs** (full passes over the data). The loss shrinks and the predictions improve.
 
