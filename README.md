@@ -18,6 +18,15 @@ Each guide starts from zero and builds up one small step at a time. If something
 | Machine learning | [LLM Inference](llm_inference.md) | How a language model writes its answer one token at a time |
 | Machine learning | [Vision Transformer (ViT)](vit.md) | How a transformer understands images by cutting them into patches and treating them like words |
 
+## Code examples
+
+These files go with the Mini Autograd guide. Keep them in the same folder.
+
+| File | What it does |
+|---|---|
+| [mini_autograd.py](mini_autograd.py) | A small autograd engine: scalar values, gradients, and backpropagation |
+| [xor_train.py](xor_train.py) | Trains a tiny neural network on XOR using the engine above. Run it with `python xor_train.py` |
+
 ## Our rules for writing simply
 
 1. **Plain words first.** Explain the idea in everyday language before using any technical term.
