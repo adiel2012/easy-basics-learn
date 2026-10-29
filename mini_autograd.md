@@ -76,12 +76,13 @@ Autograd records this graph while the forward calculation runs. Then, to find gr
 
 ```python
 class Value:
-    def __init__(self, data, _children=(), _op=""):
+    def __init__(self, data, _children=(), _op="", requires_grad=True):
         self.data = float(data)      # the actual number
         self.grad = 0.0              # how much the final answer depends on this
         self._backward = lambda: None  # instructions for passing gradients back
         self._prev = set(_children)  # the inputs that created this value
         self._op = _op               # the operation name, e.g. "+" or "*"
+        self.requires_grad = requires_grad  # False = frozen: the update step skips it
 ```
 
 Every number in the program is wrapped in a `Value`. Each one stores:
@@ -218,7 +219,7 @@ This is the heart of the program. It does three things:
 2. **Start at the end.** The final output's gradient is set to `1.0`, because the output's change with respect to itself is 1.
 3. **Walk backwards.** It reverses that order, so the final output is processed first and gradients flow toward the original inputs. Each value runs its `_backward()` function.
 
-The order matters. When a value is processed, all operations that use it have already contributed their gradients. It can now pass its accumulated gradient farther backward.
+The sort places each value after its inputs, so reversing it places each value before its inputs. When a value's turn comes, every operation that uses it has already added its gradient to it. It can now pass its complete gradient farther backward.
 
 ---
 
@@ -337,7 +338,7 @@ Training repeats the same three steps many times:
 
    If a gradient is positive, a sufficiently small increase in the weight would increase the loss locally, so gradient descent moves the weight in the opposite direction. A step that is too large can still increase the loss, which is why the learning rate matters. If it is negative, we increase the weight. The **learning rate** controls how big each step is.
 
-Repeat for many **epochs** (full passes over the data). The loss shrinks and the predictions improve.
+Repeat for many **epochs** (full passes over the data). The loss shrinks and the predictions improve. The loss printed for an epoch is measured before that epoch's weight update, because the forward pass runs before the update step.
 
 ### The script
 
@@ -439,7 +440,7 @@ for x, y in zip(X, Y):
 python xor_train.py
 ```
 
-Expected output (the exact numbers depend on the random seed):
+Output from running the script as written (`random.seed(1)`). Other seeds give slightly different numbers, but the predictions should still be correct:
 
 ```
 epoch    0   loss 1.00875
@@ -468,6 +469,36 @@ Read the last table:
 2. Change `n_hidden` from `4` to `1`. Can a single hidden neuron learn XOR? Why or why not?
 3. Change `random.seed(1)` to a different number. Does training still work every time?
 4. Print `params[0].grad` before and after `loss.backward()` to see gradients appear.
+
+### Freezing some parameters
+
+Sometimes you want to keep a value fixed during training. Each `Value` has a `requires_grad` flag. When it is `False`, the value is **frozen**: the training step skips it, so its number never changes.
+
+Freezing does not stop the gradient from being calculated. It only tells the update step to leave that value alone. In this engine, `requires_grad` affects only the update step, not gradient calculation. This simple engine still computes the gradient for `x`, even though `x` is never updated. Larger autograd engines often skip storing gradients for values that do not need them.
+
+A simple example, with `y = w * x`:
+
+```python
+from mini_autograd import Value
+
+w = Value(2.0)                       # trainable
+x = Value(3.0, requires_grad=False)  # frozen
+
+y = w * x
+y.backward()
+print(w.grad)  # 3.0  (the gradient is still computed for both values)
+print(x.grad)  # 2.0
+
+lr = 0.1
+for p in [w, x]:
+    if p.requires_grad:   # skip frozen values
+        p.data -= lr * p.grad
+
+print(w.data)  # 1.7  (2.0 - 0.1 * 3.0)
+print(x.data)  # 3.0  (frozen, unchanged)
+```
+
+The same idea works in the XOR script. Setting `freeze_hidden = True` freezes every hidden-layer weight and bias, so only the output neuron learns. This shows that freezing is a choice you make, and it can make learning harder. Freezing the hidden layer prevents its weights and biases from adapting. The output neuron can still learn, but whether it solves XOR depends on the features produced by the fixed hidden layer.
 
 ### What you learned
 
