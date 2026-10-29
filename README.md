@@ -17,6 +17,7 @@ Each guide starts from zero and builds up one small step at a time. If something
 | Machine learning | [Attention Masks](attention_masks.md) | Which tokens each token is allowed to look at, and the different kinds of masks |
 | Machine learning | [LLM Inference](llm_inference.md) | How a language model writes its answer one token at a time |
 | Machine learning | [Vision Transformer (ViT)](vit.md) | How a transformer understands images by cutting them into patches and treating them like words |
+| Information theory | [Shannon Entropy](shannon_entropy.md) | How much surprise or uncertainty a random outcome carries, measured in bits |
 
 ## Code examples
 
