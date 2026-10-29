@@ -50,17 +50,84 @@ A network with no hidden layer can only draw **one straight line**, so it can't 
 
 ### Its shape
 
-```
- inputs          hidden layer         output
-                 (2 neurons)          (1 neuron)
+In short: **2 inputs → 2 hidden neurons → 1 output neuron**.
 
-  x₁ ──┬──────▶  h₁ ──┐
-       │   ╲  ╱       ├──────▶  z ──▶ sigmoid ──▶ probability
-       │    ╳         │
-  x₂ ──┴──────▶  h₂ ──┘
+```
+ INPUTS          HIDDEN LAYER (2 neurons)                   OUTPUT (1 neuron)
+
+ x₁ ─(w₁₁ = 1)─┐
+               ├─▶ [ h₁ │ bias d₁ = 0  │ ReLU ] ─(v₁ = 4)──┐
+ x₂ ─(w₂₁ = 1)─┘                                           │
+                                                           ├─▶ [ z │ bias c = −2 │ sigmoid ] ─▶ p
+ x₁ ─(w₁₂ = 1)─┐                                           │
+               ├─▶ [ h₂ │ bias d₂ = −1 │ ReLU ] ─(v₂ = −8)─┘
+ x₂ ─(w₂₂ = 1)─┘
 ```
 
-Every input connects to every hidden neuron, and every hidden neuron connects to the output.
+**How to read it**
+
+- Each line is labelled with its **weight**: its symbol and its value, like **(w₁₁ = 1)**. A value traveling along that line is multiplied by that weight.
+- Each neuron (in brackets) **adds up** everything that arrives, plus its own **bias**, then applies its function: **ReLU**, max(0, ·), in the hidden layer, and **sigmoid**, σ, at the output.
+- **x₁ and x₂ appear twice** because each input feeds **both** hidden neurons.
+- Weight names: **wᵢⱼ** goes from input xᵢ to hidden neuron hⱼ. **vⱼ** goes from hidden neuron hⱼ to the output.
+
+**From the picture to one formula**
+
+Read the picture neuron by neuron, left to right:
+
+```
+Hidden neuron 1:  h₁ = max(0, w₁₁·x₁ + w₂₁·x₂ + d₁)  =  max(0, 1·x₁ + 1·x₂ + 0)
+Hidden neuron 2:  h₂ = max(0, w₁₂·x₁ + w₂₂·x₂ + d₂)  =  max(0, 1·x₁ + 1·x₂ − 1)
+Output neuron:    z  = v₁·h₁ + v₂·h₂ + c              =  4·h₁ + (−8)·h₂ + (−2)
+```
+
+Now replace h₁ and h₂ in the output formula with their own formulas. This gives the output **directly in terms of x₁ and x₂**:
+
+```
+z = v₁ · max(0, w₁₁·x₁ + w₂₁·x₂ + d₁) + v₂   · max(0, w₁₂·x₁ + w₂₂·x₂ + d₂  ) + c
+z = 4  · max(0, 1  ·x₁ + 1  ·x₂ + 0 ) + (−8) · max(0, 1  ·x₁ + 1  ·x₂ + (−1)) + (−2)
+
+z = 4·max(0, x₁ + x₂) − 8·max(0, x₁ + x₂ − 1) − 2
+
+p = σ(z) = 1 / (1 + e^(−z))
+```
+
+The first two lines have the same layout, so every symbol sits right above its value. Each one matches a label in the picture:
+
+| Symbol | Where it is in the picture | Value |
+|---|---|---|
+| w₁₁ | line from x₁ into h₁ | 1 |
+| w₂₁ | line from x₂ into h₁ | 1 |
+| d₁ | bias inside h₁ | 0 |
+| w₁₂ | line from x₁ into h₂ | 1 |
+| w₂₂ | line from x₂ into h₂ | 1 |
+| d₂ | bias inside h₂ | −1 |
+| v₁ | line from h₁ into the output | 4 |
+| v₂ | line from h₂ into the output | −8 |
+| c | bias inside the output neuron | −2 |
+
+**Try it once:** for input (1, 1):
+
+```
+z = 4·max(0, 1 + 1) − 8·max(0, 1 + 1 − 1) − 2
+  = 4·max(0, 2)     − 8·max(0, 1)         − 2
+  = 4·2             − 8·1                 − 2
+  = 8 − 8 − 2
+  = −2
+p = σ(−2) ≈ 0.119   →   answer 0
+```
+
+Section 5 works through all four inputs step by step.
+
+**Counting the connections**
+
+| Part | What it connects | Weights | Biases |
+|---|---|---|---|
+| Hidden layer | each of the 2 inputs → each of the 2 hidden neurons | 2 × 2 = 4 | 2 |
+| Output layer | each of the 2 hidden neurons → the output | 2 | 1 |
+| **Total** | | **6** | **3** |
+
+So the whole network is described by **9 numbers**.
 
 ### Its weights (already fitted)
 
