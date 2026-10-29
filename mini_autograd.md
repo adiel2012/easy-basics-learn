@@ -1,6 +1,6 @@
 # Mini Autograd: Learning How Machines Compute Gradients
 
-This guide explains a small Python program called a **mini autograd**. It is about 150 lines long, and it is a real (tiny) version of the engine that trains neural networks.
+This guide explains a small Python program called a **mini autograd**. It is about 172 lines long, and it is a real (tiny) version of the engine that trains neural networks.
 
 You do not need any math beyond basic algebra to follow along. We will build up the ideas one step at a time.
 
@@ -221,7 +221,9 @@ This is the heart of the program. It does three things:
 2. **Start at the end.** The final output's gradient is set to `1.0`, because the output's change with respect to itself is 1.
 3. **Walk backwards.** It reverses that order, so the final output is processed first and gradients flow toward the original inputs. Each value runs its `_backward()` function.
 
-The sort places each value after its inputs, so reversing it places each value before its inputs. When a value's turn comes, every operation that uses it has already added its gradient to it. It can now pass its complete gradient farther backward.
+The graph is ordered so that each result appears after the values used to compute it. Reversing this order processes each result before its inputs.
+
+This matters because a value may feed into several later operations. By the time that value is processed, all those operations have had a chance to add their gradient contributions. The value can then pass the accumulated gradient farther backward.
 
 **Important:** gradients accumulate by default. When one value feeds into several operations, each path adds its contribution. Before recomputing gradients on an existing graph, reset the gradients of all nodes in that graph to zero, including intermediate nodes. Otherwise, old gradients can contaminate the new calculation. The XOR training loop avoids this by building a fresh graph each epoch and resetting the trainable parameters' gradients.
 
@@ -292,7 +294,7 @@ Check the results by hand. If they match, you understand the core idea.
 **Challenges:**
 
 1. Compute the gradient of `w = (a + b) * (a + b)` for `a = 1`, `b = 2`. Predict first, then check.
-2. Add a new operation, such as `sigmoid`, by following the `tanh` pattern.
+2. Add a new operation that is not in the code yet, such as `softplus(x) = log(1 + exp(x))`, by following the `tanh` pattern. Hint: its derivative is the sigmoid.
 3. Build a tiny neuron: `out = (w * x + bias).tanh()`, then call `backward()` and print the gradient for `w`.
 
 ---
@@ -409,7 +411,7 @@ class MLP:
     def __call__(self, x):
         h = [n(x) for n in self.hidden]
         z = sum((wi * hi for wi, hi in zip(self.out_w, h)), self.out_b)
-        return z.sigmoid()  # output in (0, 1): read it as a probability
+        return z.sigmoid()  # output in (0, 1): an estimated probability of class 1
 
     def params(self):
         ps = []

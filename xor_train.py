@@ -43,7 +43,7 @@ class MLP:
     def __call__(self, x):
         h = [n(x) for n in self.hidden]
         z = sum((wi * hi for wi, hi in zip(self.out_w, h)), self.out_b)
-        return z.sigmoid()  # output in (0, 1): read it as a probability
+        return z.sigmoid()  # output in (0, 1): an estimated probability of class 1
 
     def params(self):
         ps = []
