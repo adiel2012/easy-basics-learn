@@ -22,7 +22,7 @@ A gradient is exactly that:
 
 - It answers: *"If I nudge this input a tiny bit, how quickly does the output change, at its current value?"*
 - For a tiny input change, the output change is approximately the gradient multiplied by the input change.
-- A gradient tells you how sensitive the output is to a small change in an input, measured in that input's units.
+- A gradient tells you how quickly the output changes for a tiny input change, at the current input value. Its units are output units divided by input units, and its numerical value depends on the units used for the input and output.
   Example: for `f(x) = x²`, the gradient at `x = 3` is `6`. A tiny increase of `0.01` in `x` changes `f` by about `6 × 0.01 = 0.06`.
 - A **positive** gradient means: increasing the input increases the output.
 - A **negative** gradient means: increasing the input decreases the output.
@@ -82,7 +82,7 @@ class Value:
         self._backward = lambda: None  # instructions for passing gradients back
         self._prev = set(_children)  # the inputs that created this value
         self._op = _op               # the operation name, e.g. "+" or "*"
-        self.requires_grad = requires_grad  # False = frozen: the update step skips it
+        self.requires_grad = requires_grad  # False = frozen: the update step skips it (gradients are still computed)
 ```
 
 Every number in the program is wrapped in a `Value`. Each one stores:
@@ -221,7 +221,22 @@ This is the heart of the program. It does three things:
 
 The sort places each value after its inputs, so reversing it places each value before its inputs. When a value's turn comes, every operation that uses it has already added its gradient to it. It can now pass its complete gradient farther backward.
 
-Gradients accumulate by default. When one value feeds into several operations, each path adds its contribution. Before recomputing gradients on an existing graph, reset the gradients of all nodes in that graph to zero, including intermediate nodes. Otherwise, old gradients can contaminate the new calculation. The XOR training loop avoids this by building a fresh graph each epoch and resetting the trainable parameters' gradients.
+**Important:** gradients accumulate by default. When one value feeds into several operations, each path adds its contribution. Before recomputing gradients on an existing graph, reset the gradients of all nodes in that graph to zero, including intermediate nodes. Otherwise, old gradients can contaminate the new calculation. The XOR training loop avoids this by building a fresh graph each epoch and resetting the trainable parameters' gradients.
+
+---
+
+### Backward pass example
+
+Take the graph `c = a * b`, then `d = c + e`, with `a = 2`, `b = 3`, and `e = 4`.
+
+**Forward pass** (left to right): `c = 2 × 3 = 6`, then `d = 6 + 4 = 10`.
+
+**Backward pass** (right to left), starting with `d.grad = 1`:
+
+1. `d = c + e` passes the gradient to both inputs unchanged: `c.grad = 1` and `e.grad = 1`.
+2. `c = a * b` multiplies the **incoming gradient** (`c.grad`, which came from downstream) by the **local derivative** (the other input, which is the factor from the multiplication itself): `a.grad = b × c.grad = 3 × 1 = 3` and `b.grad = a × c.grad = 2 × 1 = 2`. This multiplication of an incoming gradient by a local derivative is the chain rule in action.
+
+These are the values the backward functions compute. They follow the addition and multiplication rules described above.
 
 ---
 
@@ -249,7 +264,7 @@ numeric df/da ~ -0.02355...
 numeric df/db ~ 0.06001...
 ```
 
-The **numeric** lines are a check. They estimate the gradient by nudging the input by a tiny amount (`h = 0.000001`) and measuring the change. The autograd numbers match, which confirms the engine works.
+The **numeric** lines are a check. They estimate the gradient by nudging the input by a tiny amount (`h = 0.000001`) and measuring the change. The autograd numbers closely match the numerical estimates, which is a good check that the gradient calculations are correct for this example. Testing more operations and computation graphs would provide additional confidence in the engine.
 
 ---
 
@@ -332,7 +347,7 @@ x2 ──┘   (tanh)             └
 
 Training repeats the same three steps many times:
 
-1. **Forward pass.** Run each of the four examples through the network. Compare each prediction to its target, and add up the squared errors into one number called the **loss**. A lower loss means better predictions.
+1. **Forward pass.** Run each of the four examples through the network. Compare each prediction to its target, and add up the squared errors into one number called the **loss**. The script adds the four squared errors rather than averaging them. Averaging is also common; it only rescales the gradients, so the learning rate may need adjusting. A lower loss means better predictions.
 2. **Backward pass.** Call `loss.backward()`. This fills in `grad` for every weight, telling us how the loss changes if that weight changes. Before this step we reset the old gradients to zero, because gradients accumulate by default.
 3. **Update.** Move each weight a small step in the opposite direction of its gradient:
 
@@ -454,7 +469,7 @@ for x, y in zip(X, Y):
 python xor_train.py
 ```
 
-Output from running the script as written (`random.seed(1)`). Other seeds give slightly different numbers, but the predictions should still be correct:
+Output from running the script as written (`random.seed(1)`). Other random seeds may produce different loss values and predictions. Some initializations may require more training or a different learning rate.
 
 ```
 trainable parameters: 17 of 17
@@ -482,9 +497,11 @@ Read the last table:
 ### Things to try
 
 1. Change `learning_rate` to `0.05` and to `5.0`. Which one learns slowly, and which one overshoots?
-2. Change `n_hidden` from `4` to `1`. Can a single hidden neuron learn XOR? Why or why not?
+2. Change `n_hidden` from `4` to `1`. Can a single hidden neuron learn XOR? Why or why not? Hint: draw the four input points and the decision boundary. Can one hidden neuron produce enough distinct regions to separate the XOR classes?
 3. Change `random.seed(1)` to a different number. Does training still work every time?
 4. Print `params[0].grad` before and after `loss.backward()` to see gradients appear.
+
+**Answer to challenge 2:** One hidden neuron cannot represent XOR perfectly in this network. Its tanh output depends on a weighted sum of the two inputs, and the sigmoid output preserves the ordering of that hidden value (or reverses it if the output weight is negative). The resulting 0.5 classification boundary is still a straight line. XOR requires a more complex boundary, so we use multiple hidden neurons.
 
 ### Freezing some parameters
 
@@ -515,6 +532,15 @@ print(x.data)  # 3.0  (frozen, unchanged)
 ```
 
 The same idea works in the XOR script. Setting `freeze_hidden = True` freezes every hidden-layer weight and bias, so only the output neuron learns. This shows that freezing is a choice you make, and it can make learning harder. Freezing the hidden layer prevents its weights and biases from adapting. The output neuron can still learn, but whether it solves XOR depends on the features produced by the fixed hidden layer.
+
+### Limits of this engine
+
+This is a teaching engine, not a production library:
+
+- It works on single numbers (scalars), not on arrays or tensors, so it is slow for large networks.
+- `backward()` walks the graph recursively. Very deep graphs can exceed Python's recursion limit.
+- `requires_grad` is an update-freezing flag. It does not turn off gradient calculation.
+- The complete `Value` class in `mini_autograd.py` also has helper methods such as `_wrap`, `__neg__`, and `__rsub__`. The snippets in this guide show the main rules, so you need the full file to run the XOR script.
 
 ### What you learned
 
