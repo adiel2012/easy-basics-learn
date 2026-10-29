@@ -24,8 +24,8 @@ A gradient is exactly that:
 - For a tiny input change, the output change is approximately the gradient multiplied by the input change.
 - A gradient tells you how quickly the output changes for a tiny input change, at the current input value. Its units are output units divided by input units, and its numerical value depends on the units used for the input and output.
   Example: for `f(x) = x²`, the gradient at `x = 3` is `6`. A tiny increase of `0.01` in `x` changes `f` by about `6 × 0.01 = 0.06`.
-- A **positive** gradient means: increasing the input increases the output.
-- A **negative** gradient means: increasing the input decreases the output.
+- A **positive** gradient means that a small increase in the input tends to increase the output locally.
+- A **negative** gradient means that a small increase tends to decrease it.
 - A larger gradient magnitude means the output changes more rapidly for a given small change in the input, using the chosen units. A small one means it changes slowly.
 
 Why care? If you know the gradient, you know which way to nudge things to make the output better. This is how neural networks learn.
@@ -153,7 +153,7 @@ These are built from the ones above, so we do not need separate rules:
 - `x - y` is `x + (-y)`
 - `x / y` is `x * y^(-1)`
 
-This is a nice trick: a few basic rules cover everything.
+This is a nice trick: a few basic rules cover everything. These rules apply only where the underlying operation is defined and differentiable. For example, division by zero is undefined, `log(x)` requires `x > 0`, and a power with a fractional exponent can be problematic for negative bases.
 
 ### Activation functions
 
@@ -225,7 +225,7 @@ The graph is ordered so that each result appears after the values used to comput
 
 This matters because a value may feed into several later operations. By the time that value is processed, all those operations have had a chance to add their gradient contributions. The value can then pass the accumulated gradient farther backward.
 
-**Important:** gradients accumulate by default. When one value feeds into several operations, each path adds its contribution. Before recomputing gradients on an existing graph, reset the gradients of all nodes in that graph to zero, including intermediate nodes. Otherwise, old gradients can contaminate the new calculation. The XOR training loop avoids this by building a fresh graph each epoch and resetting the trainable parameters' gradients.
+**Important:** gradients accumulate by default. When one value feeds into several operations, each path adds its contribution. Before recomputing gradients on an existing graph, reset the gradients of every node in that graph, including intermediate nodes. Otherwise, old gradients can contaminate the new calculation. In the XOR training loop, each epoch builds a fresh graph and resets the parameter gradients before backpropagation, so the intermediate nodes start with fresh gradients.
 
 ---
 
@@ -241,6 +241,8 @@ Take the graph `c = a * b`, then `d = c + e`, with `a = 2`, `b = 3`, and `e = 4`
 2. `c = a * b` multiplies the **incoming gradient** (`c.grad`, which came from downstream) by the **local derivative** (the other input, which is the factor from the multiplication itself): `a.grad = b × c.grad = 3 × 1 = 3` and `b.grad = a × c.grad = 2 × 1 = 2`. This multiplication of an incoming gradient by a local derivative is the chain rule in action.
 
 These are the values the backward functions compute. They follow the addition and multiplication rules described above.
+
+In general, the gradient of the final result `L` with respect to an input `a` is the **incoming gradient** times the **local derivative**: `∂L/∂a = (∂L/∂c) × (∂c/∂a)`. The engine stores `∂L/∂c` in `c.grad`, and each operation supplies its own local derivative `∂c/∂a`.
 
 ---
 
@@ -357,7 +359,7 @@ Training repeats the same three steps many times:
 
        weight = weight - learning_rate × gradient
 
-   If a gradient is positive, a sufficiently small increase in the weight would increase the loss locally, so gradient descent moves the weight in the opposite direction. A step that is too large can still increase the loss, which is why the learning rate matters. If it is negative, we increase the weight. The **learning rate** controls how big each step is.
+   If a gradient is positive, a sufficiently small increase in the weight would increase the loss locally, so gradient descent moves the weight in the opposite direction. The actual loss may still increase after an update, particularly if the learning rate is too large, which is why the learning rate matters. If it is negative, we increase the weight. The **learning rate** controls how big each step is.
 
 Repeat for many **epochs** (full passes over the data). The loss shrinks and the predictions improve. The loss printed for an epoch is measured before that epoch's weight update, because the forward pass runs before the update step.
 
@@ -510,9 +512,9 @@ Read the last table:
 
 ### Freezing some parameters
 
-Sometimes you want to keep a value fixed during training. Each `Value` has a `requires_grad` flag. When it is `False`, the value is **frozen**: the training step skips it, so its number never changes.
+Sometimes you want to keep a value fixed during training. Each `Value` has a `requires_grad` flag, which in this engine is an update-freezing flag. When it is `False`, the value is **frozen**: the training step skips it, so its number never changes.
 
-Freezing does not stop the gradient from being calculated. It only tells the update step to leave that value alone. This is an update-freezing flag, not full gradient tracking as in larger frameworks. In this engine, `requires_grad` affects only the update step, not gradient calculation. This simple engine still computes the gradient for `x`, even though `x` is never updated. Larger autograd engines often skip storing gradients for values that do not need them.
+In this teaching engine, `requires_grad` controls whether the update step changes a value. It does not control whether gradients are calculated. Even when `x` is frozen, the engine still computes `x.grad` and passes gradient contributions through `x` to other values, such as `w`. Larger autograd frameworks can use gradient-tracking flags to avoid recording operations or storing gradients when they are not needed.
 
 A simple example, with `y = w * x`:
 
