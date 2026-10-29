@@ -26,7 +26,7 @@ A gradient is exactly that:
   Example: for `f(x) = x²`, the gradient at `x = 3` is `6`. A tiny increase of `0.01` in `x` changes `f` by about `6 × 0.01 = 0.06`.
 - A **positive** gradient means: increasing the input increases the output.
 - A **negative** gradient means: increasing the input decreases the output.
-- A **big** number means the input matters a lot. A **small** number means it barely matters.
+- A larger gradient magnitude means the output changes more rapidly for a given small change in the input, using the chosen units. A small one means it changes slowly.
 
 Why care? If you know the gradient, you know which way to nudge things to make the output better. This is how neural networks learn.
 
@@ -126,7 +126,7 @@ def __mul__(self, other):
     return out
 ```
 
-**In plain words:** If `out = x * y`, nudging `x` changes `out` by `y`, and nudging `y` changes `out` by `x`. That is exactly the rule we used by hand in section 3.
+**In plain words:** If `out = x * y`, the rate of change of `out` with respect to `x` is `y`, and with respect to `y` is `x`. For a small nudge, the change in `out` is approximately that rate multiplied by the nudge. That is exactly the rule we used by hand in section 3.
 
 ### Powers
 
@@ -189,7 +189,7 @@ def sigmoid(self):
     return out
 ```
 
-`sigmoid` squashes any number into the range 0 to 1, so its output can be read as a probability. It is used at the output of the XOR network later in this guide.
+`sigmoid` squashes any number into the range 0 to 1, so its output can be read as an estimated probability of class 1. This estimate is not necessarily a perfectly calibrated probability. It is used at the output of the XOR network later in this guide.
 
 The code also includes `relu`, `exp`, and `log`, which follow the same pattern.
 
@@ -220,6 +220,8 @@ This is the heart of the program. It does three things:
 3. **Walk backwards.** It reverses that order, so the final output is processed first and gradients flow toward the original inputs. Each value runs its `_backward()` function.
 
 The sort places each value after its inputs, so reversing it places each value before its inputs. When a value's turn comes, every operation that uses it has already added its gradient to it. It can now pass its complete gradient farther backward.
+
+Gradients accumulate by default. When one value feeds into several operations, each path adds its contribution. Before recomputing gradients on an existing graph, reset the gradients of all nodes in that graph to zero, including intermediate nodes. Otherwise, old gradients can contaminate the new calculation. The XOR training loop avoids this by building a fresh graph each epoch and resetting the trainable parameters' gradients.
 
 ---
 
@@ -324,7 +326,7 @@ x2 ──┘   (tanh)             └
 ```
 
 - Each **hidden neuron** computes `tanh(w1·x1 + w2·x2 + b)`.
-- The **output neuron** combines the four hidden values with its own weights and then applies `sigmoid`. The sigmoid squeezes the result into (0, 1), so we can read it as a probability.
+- The **output neuron** combines the four hidden values with its own weights and then applies `sigmoid`. The sigmoid squeezes the result into (0, 1), giving a number the network can use as an estimated probability of class 1. This estimate is not necessarily a perfectly calibrated probability.
 
 ### The training loop
 
@@ -408,6 +410,17 @@ params = model.params()
 learning_rate = 0.5
 epochs = 2000
 
+# Freezing: a parameter with requires_grad = False keeps its current value.
+# Set freeze_hidden = True to train only the output neuron.
+freeze_hidden = False
+if freeze_hidden:
+    for n in model.hidden:
+        for p in n.params():
+            p.requires_grad = False
+
+trainable = sum(1 for p in params if p.requires_grad)
+print(f"trainable parameters: {trainable} of {len(params)}")
+
 for epoch in range(epochs):
     # 1. Forward pass: build the graph and compute the total loss
     loss = Value(0.0)
@@ -422,7 +435,8 @@ for epoch in range(epochs):
 
     # 3. Update: move each parameter a little against its gradient
     for p in params:
-        p.data -= learning_rate * p.grad
+        if p.requires_grad:  # frozen parameters are skipped
+            p.data -= learning_rate * p.grad
 
     if epoch % 400 == 0 or epoch == epochs - 1:
         print(f"epoch {epoch:4d}   loss {loss.data:.5f}")
@@ -443,6 +457,7 @@ python xor_train.py
 Output from running the script as written (`random.seed(1)`). Other seeds give slightly different numbers, but the predictions should still be correct:
 
 ```
+trainable parameters: 17 of 17
 epoch    0   loss 1.00875
 epoch  400   loss 0.00382
 epoch  800   loss 0.00173
@@ -459,9 +474,10 @@ x1  x2  target  output  predicted
 
 Read the last table:
 
-- **output** is the network's probability that the answer is 1.
+- **output** is the network's estimated probability that the answer is 1. It is not guaranteed to be perfectly calibrated.
 - **predicted** turns that probability into a class: 1 if the output is at least 0.5, otherwise 0.
 - When **predicted** matches **target** in every row, the network has learned XOR.
+- A lower loss usually means better predictions, but it does not guarantee correct classifications at every step.
 
 ### Things to try
 
@@ -474,7 +490,7 @@ Read the last table:
 
 Sometimes you want to keep a value fixed during training. Each `Value` has a `requires_grad` flag. When it is `False`, the value is **frozen**: the training step skips it, so its number never changes.
 
-Freezing does not stop the gradient from being calculated. It only tells the update step to leave that value alone. In this engine, `requires_grad` affects only the update step, not gradient calculation. This simple engine still computes the gradient for `x`, even though `x` is never updated. Larger autograd engines often skip storing gradients for values that do not need them.
+Freezing does not stop the gradient from being calculated. It only tells the update step to leave that value alone. This is an update-freezing flag, not full gradient tracking as in larger frameworks. In this engine, `requires_grad` affects only the update step, not gradient calculation. This simple engine still computes the gradient for `x`, even though `x` is never updated. Larger autograd engines often skip storing gradients for values that do not need them.
 
 A simple example, with `y = w * x`:
 
