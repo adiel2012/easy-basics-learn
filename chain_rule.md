@@ -269,7 +269,7 @@ The two paths almost cancel: one pushes the loss down, the other pushes it up.
 
 ### Check it in code
 
-A **numerical gradient check** confirms any chain-rule result: nudge one value, recompute, and divide.
+A **numerical gradient check** helps verify a chain-rule result: nudge one value slightly, recompute the loss, and divide the change in loss by the change in that value. The result is an approximation, so compare it with the analytical gradient using a reasonable step size. (It can also mislead at points where the function has a corner, such as ReLU at exactly 0.)
 
 ```python
 import math
