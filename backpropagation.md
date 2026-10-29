@@ -170,7 +170,7 @@ Backpropagation only **calculates** the gradients. Gradient descent **uses** the
 θ_new = θ_old − η · ∂L/∂θ
 ```
 
-- If the gradient is **positive**, a small increase in θ would increase the loss locally, so gradient descent moves θ **down**.
+- If the gradient is **positive**, a sufficiently small increase in θ would increase the loss (the gradient describes the local slope), so gradient descent moves θ **down**. A finite step isn't guaranteed to lower the loss; see the note in Section 5.
 - If the gradient is **negative**, gradient descent moves θ **up**.
 - η (the learning rate) controls the step size.
 
