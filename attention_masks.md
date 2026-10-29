@@ -188,7 +188,7 @@ It blocks a whole **column**: no token may look at the padding.
 
 ### 5.4 Sliding-window mask (local attention)
 
-**What it does:** each token sees only its **nearest previous tokens**. With a window of 2, each token sees itself and the one before:
+**What it does:** each token sees itself and only its **nearest previous tokens**. With a **causal** window of 2, each token sees itself and the one before it:
 
 ```
 ✓ · · ·
@@ -329,7 +329,7 @@ Three kinds of "mask" are easy to mix up:
 
 - **Blocking with 0 instead of −∞.** Adding 0 changes nothing. The score must become −∞ so that e^score = 0 (or, in practice, a very large negative number, so the weight is negligible).
 - **Applying the mask after softmax without renormalizing.** Setting blocked weights to 0 after softmax generally leaves the remaining weights adding up to less than 1. Masking the scores **before** softmax automatically makes the allowed weights add up to 1.
-- **Blocking a whole row.** If every cell in a row is blocked, softmax has nothing to share and divides 0 by 0. Make sure each query can see at least one key (usually itself).
+- **Blocking a whole row.** If every score in a row becomes −∞, ordinary softmax is undefined (it would divide 0 by 0) and may produce NaN ("not a number") values. Make sure each query has at least one allowed key, usually itself, unless the implementation explicitly handles fully masked rows.
 - **Mixing up rows and columns.** Rows are the tokens **looking**; columns are the tokens **being looked at**. The padding mask blocks **columns**.
 - **Confusing attention masks with `[MASK]` tokens.** See above: two different ideas.
 
