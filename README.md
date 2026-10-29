@@ -9,9 +9,13 @@ Each guide starts from zero and builds up one small step at a time. If something
 | Topic | Guide | In one sentence |
 |---|---|---|
 | Machine learning | [MLP Inference: XOR](mlp_xor_inference.md) | How a small trained neural network turns two inputs into an answer, step by step |
+| Machine learning | [Activation Functions](activation_functions.md) | The small non-linear functions (ReLU, sigmoid, softmax and many more) that let stacked layers learn curved patterns |
 | Machine learning | [The Chain Rule](chain_rule.md) | The simple math rule that lets a network work out how each weight affects the error |
 | Machine learning | [Backpropagation](backpropagation.md) | How a neural network learns by working out which weights to blame and nudging them |
 | Machine learning | [Mini Autograd](mini_autograd.md) | How a tiny program works out gradients automatically and uses them to train a network on XOR |
+| Machine learning | [Loss Functions](loss_functions.md) | How a model measures how wrong its predictions are, and why the choice of measure changes what it learns |
+| Machine learning | [Overfitting and the Train/Test Split](overfitting_train_test_split.md) | Why a model can look good on its training data and still fail on new data, and how to check |
+| Machine learning | [Regularization](regularization.md) | Ways to stop a model memorizing its training data so it does better on data it hasn't seen |
 | Machine learning | [Tokenization](tokenization.md) | How text is cut into small pieces and turned into numbers a computer can use |
 | Machine learning | [Attention Blocks](attention_blocks.md) | How each word in a sentence decides which other words to pay attention to |
 | Machine learning | [Attention Masks](attention_masks.md) | Which tokens each token is allowed to look at, and the different kinds of masks |
@@ -78,7 +82,7 @@ The information theory guides also start with a **Learning path** line. Where th
 
 ## Adding a new guide
 
-1. Create a new `.md` file named after the topic, for example `gradient_descent.md`.
+1. Create a new `.md` file named after the topic, for example `gradient_descent.md`. Use lowercase words joined by underscores (`snake_case`): no hyphens, spaces or capitals.
 2. Follow the structure and the writing rules above.
 3. Ask: "Could a beginner follow this?" If not, simplify.
 4. Add a row to the **Guides** table, with a one-sentence explanation.
