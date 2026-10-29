@@ -174,6 +174,8 @@ Each link reuses a gradient that's already computed and multiplies it by the loc
 
 We use the network and the numbers from the [Backpropagation](backpropagation.md) guide: input x = (1, 0), correct answer y = 1.
 
+> **Note:** the forward values below are rounded to 3 decimals, and the calculations use those rounded values. So the gradients are **approximate**, shown with ≈. The code check at the end of this section computes them at full precision.
+
 ### The forward values (already computed there)
 
 ```
@@ -210,8 +212,8 @@ Path: v₁ → z → p → L. Multiply the three local derivatives:
 ```
 ∂L/∂v₁ = ∂L/∂p · ∂p/∂z · ∂z/∂v₁
        = −1.961 · 0.2499 · 0.6
-       = −0.490 · 0.6
-       = −0.294
+       ≈ −0.490 · 0.6
+       ≈ −0.294
 ```
 
 ### Example 2: a long chain, ∂L/∂w₁₁
@@ -221,8 +223,8 @@ Path: w₁₁ → a₁ → h₁ → z → p → L. Multiply all five local deriv
 ```
 ∂L/∂w₁₁ = ∂L/∂p · ∂p/∂z · ∂z/∂h₁ · ∂h₁/∂a₁ · ∂a₁/∂w₁₁
         = −1.961 · 0.2499 · 0.4    · 1        · 1
-        = −0.490 · 0.4 · 1 · 1
-        = −0.196
+        ≈ −0.490 · 0.4 · 1 · 1
+        ≈ −0.196
 ```
 
 **Notice the reuse (Rule 4).** Both examples start with ∂L/∂p · ∂p/∂z = −0.490. In the backpropagation guide this shared piece is called **δz**, and it's computed **once** and reused for every parameter. That's why the guide could write simply ∂L/∂v₁ = δz · h₁ and ∂L/∂w₁₁ = δz · v₁ · 1 · x₁.
@@ -243,24 +245,24 @@ So we use Rule 3: compute each path, then add.
 
 ```
 ∂L/∂z · ∂z/∂h₁ · ∂h₁/∂a₁ · ∂a₁/∂x₁
-= −0.490 · 0.4 · 1 · w₁₁
-= −0.196 · 0.5
-= −0.098
+≈ −0.490 · 0.4 · 1 · w₁₁
+≈ −0.196 · 0.5
+≈ −0.098
 ```
 
 **Path through h₂**
 
 ```
 ∂L/∂z · ∂z/∂h₂ · ∂h₂/∂a₂ · ∂a₂/∂x₁
-= −0.490 · (−0.6) · 1 · w₁₂
-= 0.294 · 0.3
-= 0.0882
+≈ −0.490 · (−0.6) · 1 · w₁₂
+≈ 0.294 · 0.3
+≈ 0.0882
 ```
 
 **Add the paths**
 
 ```
-∂L/∂x₁ = −0.098 + 0.0882 = −0.0098
+∂L/∂x₁ ≈ −0.098 + 0.0882 ≈ −0.0098
 ```
 
 The two paths almost cancel: one pushes the loss down, the other pushes it up.
