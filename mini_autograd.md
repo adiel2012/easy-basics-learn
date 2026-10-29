@@ -85,6 +85,8 @@ class Value:
         self.requires_grad = requires_grad  # False = frozen: the update step skips it (gradients are still computed)
 ```
 
+**Note:** in this teaching engine, `requires_grad` only controls whether the update step changes a value. It is not the gradient-tracking switch found in larger frameworks such as PyTorch.
+
 Every number in the program is wrapped in a `Value`. Each one stores:
 
 | Field | Meaning |
@@ -493,6 +495,7 @@ Read the last table:
 - **predicted** turns that probability into a class: 1 if the output is at least 0.5, otherwise 0.
 - When **predicted** matches **target** in every row, the network has learned XOR.
 - A lower loss usually means better predictions, but it does not guarantee correct classifications at every step.
+- The network learns outputs near the correct labels on these four training examples. This alone does not show how well it would generalize to other data. Four examples can be memorized, so success here is not proof of broad learning.
 
 ### Things to try
 
@@ -501,7 +504,7 @@ Read the last table:
 3. Change `random.seed(1)` to a different number. Does training still work every time?
 4. Print `params[0].grad` before and after `loss.backward()` to see gradients appear.
 
-**Answer to challenge 2:** One hidden neuron cannot represent XOR perfectly in this network. Its tanh output depends on a weighted sum of the two inputs, and the sigmoid output preserves the ordering of that hidden value (or reverses it if the output weight is negative). The resulting 0.5 classification boundary is still a straight line. XOR requires a more complex boundary, so we use multiple hidden neurons.
+**Answer to challenge 2:** One hidden neuron cannot represent XOR perfectly in this network. Its tanh output depends on a weighted sum of the two inputs. Tanh and sigmoid are both monotonic, meaning they never reverse the ordering of their input. So the sigmoid output also orders points by that weighted sum (or reverses the ordering if the output weight is negative). The resulting 0.5 classification boundary is still a straight line. XOR requires a more complex boundary, so we use multiple hidden neurons.
 
 ### Freezing some parameters
 
