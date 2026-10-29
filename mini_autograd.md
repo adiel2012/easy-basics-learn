@@ -20,7 +20,10 @@ Imagine you are adjusting the volume knob on a speaker. If you turn it a little 
 
 A gradient is exactly that:
 
-- It answers: *"If I nudge this input a tiny bit, how much does the output change?"*
+- It answers: *"If I nudge this input a tiny bit, how quickly does the output change, at its current value?"*
+- For a tiny input change, the output change is approximately the gradient multiplied by the input change.
+- A gradient tells you how sensitive the output is to a small change in an input, measured in that input's units.
+  Example: for `f(x) = x²`, the gradient at `x = 3` is `6`. A tiny increase of `0.01` in `x` changes `f` by about `6 × 0.01 = 0.06`.
 - A **positive** gradient means: increasing the input increases the output.
 - A **negative** gradient means: increasing the input decreases the output.
 - A **big** number means the input matters a lot. A **small** number means it barely matters.
@@ -186,11 +189,11 @@ def backward(self):
 
 This is the heart of the program. It does three things:
 
-1. **Sort the graph (`build`).** It lists every value in an order where each value comes *after* the values it depends on.
+1. **Sort the graph (`build`).** It builds an order that places each input before the result computed from it.
 2. **Start at the end.** The final output's gradient is set to `1.0`, because the output's change with respect to itself is 1.
-3. **Walk backwards.** It runs each value's `_backward()` function in reverse order, so gradients flow from the output back to the inputs.
+3. **Walk backwards.** It reverses that order, so the final output is processed first and gradients flow toward the original inputs. Each value runs its `_backward()` function.
 
-The order matters. By the time we process a value, all the gradients flowing into it have already been added up.
+The order matters. Because the output is processed first, every downstream operation has added its gradient to a value before that value passes its accumulated gradient farther backward.
 
 ---
 
@@ -266,3 +269,187 @@ Check the results by hand. If they match, you understand the core idea.
 | **Backpropagation** | Passing gradients backwards through the graph |
 | **Forward pass** | Computing the output from the inputs |
 | **Backward pass** | Computing gradients from the output back to the inputs |
+
+---
+
+## 10. Putting it all together: training a network on XOR
+
+So far we have computed gradients for single expressions. Now we use them to **train** a small neural network, the same way real networks learn.
+
+### The problem: XOR
+
+XOR ("exclusive or") outputs 1 when exactly one input is 1:
+
+| x1 | x2 | target |
+|---|---|---|
+| 0 | 0 | 0 |
+| 0 | 1 | 1 |
+| 1 | 0 | 1 |
+| 1 | 1 | 0 |
+
+This is a **classification** problem: each input belongs to class 0 or class 1. XOR is a famous test because **no single straight line can separate the 1s from the 0s**. The network needs a **hidden layer** to bend the decision boundary.
+
+### The network
+
+```
+x1 ──┐                      ┌── output (sigmoid) ── probability of class 1
+     ├── 4 hidden neurons ──┤
+x2 ──┘   (tanh)             └
+```
+
+- Each **hidden neuron** computes `tanh(w1·x1 + w2·x2 + b)`.
+- The **output neuron** combines the four hidden values with its own weights and then applies `sigmoid`. The sigmoid squeezes the result into (0, 1), so we can read it as a probability.
+
+### The training loop
+
+Training repeats the same three steps many times:
+
+1. **Forward pass.** Run each of the four examples through the network. Compare each prediction to its target, and add up the squared errors into one number called the **loss**. A lower loss means better predictions.
+2. **Backward pass.** Call `loss.backward()`. This fills in `grad` for every weight, telling us how the loss changes if that weight changes. Before this step we reset the old gradients to zero, because gradients accumulate by default.
+3. **Update.** Move each weight a small step in the opposite direction of its gradient:
+
+       weight = weight - learning_rate × gradient
+
+   If a gradient is positive, the loss rises as the weight rises, so we decrease the weight. If it is negative, we increase the weight. The **learning rate** controls how big each step is.
+
+Repeat for many **epochs** (full passes over the data). The loss shrinks and the predictions improve.
+
+### The script
+
+Save this as `xor_train.py` in the **same folder as `mini_autograd.py`**, because it imports the `Value` class from there. It reuses the existing `+`, `*`, `tanh`, `sigmoid`, and `backward()` code without changes.
+
+```python
+"""
+Train a tiny neural network to learn XOR, using the Value autograd engine
+from mini_autograd.py.
+
+XOR truth table:
+    x1  x2  ->  y
+     0   0  ->  0
+     0   1  ->  1
+     1   0  ->  1
+     1   1  ->  0
+
+A single straight line cannot separate these classes, so the network
+needs a hidden layer.
+"""
+import random
+from mini_autograd import Value
+
+random.seed(1)
+
+
+class Neuron:
+    def __init__(self, n_in):
+        self.w = [Value(random.uniform(-1, 1)) for _ in range(n_in)]
+        self.b = Value(0.0)
+
+    def __call__(self, x):
+        # w1*x1 + w2*x2 + ... + b, then tanh to add non-linearity
+        z = sum((wi * xi for wi, xi in zip(self.w, x)), self.b)
+        return z.tanh()
+
+    def params(self):
+        return self.w + [self.b]
+
+
+class MLP:
+    """2 inputs -> hidden layer of tanh neurons -> 1 sigmoid output."""
+
+    def __init__(self, n_in, n_hidden):
+        self.hidden = [Neuron(n_in) for _ in range(n_hidden)]
+        self.out_w = [Value(random.uniform(-1, 1)) for _ in range(n_hidden)]
+        self.out_b = Value(0.0)
+
+    def __call__(self, x):
+        h = [n(x) for n in self.hidden]
+        z = sum((wi * hi for wi, hi in zip(self.out_w, h)), self.out_b)
+        return z.sigmoid()  # output in (0, 1): read it as a probability
+
+    def params(self):
+        ps = []
+        for n in self.hidden:
+            ps += n.params()
+        return ps + self.out_w + [self.out_b]
+
+
+X = [[0, 0], [0, 1], [1, 0], [1, 1]]
+Y = [0, 1, 1, 0]
+
+model = MLP(n_in=2, n_hidden=4)
+params = model.params()
+
+learning_rate = 0.5
+epochs = 2000
+
+for epoch in range(epochs):
+    # 1. Forward pass: build the graph and compute the total loss
+    loss = Value(0.0)
+    for x, y in zip(X, Y):
+        pred = model([Value(v) for v in x])
+        loss = loss + (pred - y) ** 2  # squared error
+
+    # 2. Backward pass: clear old gradients, then compute new ones
+    for p in params:
+        p.grad = 0.0
+    loss.backward()
+
+    # 3. Update: move each parameter a little against its gradient
+    for p in params:
+        p.data -= learning_rate * p.grad
+
+    if epoch % 400 == 0 or epoch == epochs - 1:
+        print(f"epoch {epoch:4d}   loss {loss.data:.5f}")
+
+print()
+print("x1  x2  target  output  predicted")
+for x, y in zip(X, Y):
+    out = model([Value(v) for v in x]).data
+    print(f"{x[0]}   {x[1]}     {y}      {out:.3f}   {int(out >= 0.5)}")
+```
+
+### Running it
+
+```
+python xor_train.py
+```
+
+Expected output (the exact numbers depend on the random seed):
+
+```
+epoch    0   loss 1.00875
+epoch  400   loss 0.00382
+epoch  800   loss 0.00173
+epoch 1200   loss 0.00111
+epoch 1600   loss 0.00082
+epoch 1999   loss 0.00064
+
+x1  x2  target  output  predicted
+0   0     0      0.008   0
+0   1     1      0.987   1
+1   0     1      0.987   1
+1   1     0      0.015   0
+```
+
+Read the last table:
+
+- **output** is the network's probability that the answer is 1.
+- **predicted** turns that probability into a class: 1 if the output is at least 0.5, otherwise 0.
+- When **predicted** matches **target** in every row, the network has learned XOR.
+
+### Things to try
+
+1. Change `learning_rate` to `0.05` and to `5.0`. Which one learns slowly, and which one overshoots?
+2. Change `n_hidden` from `4` to `1`. Can a single hidden neuron learn XOR? Why or why not?
+3. Change `random.seed(1)` to a different number. Does training still work every time?
+4. Print `params[0].grad` before and after `loss.backward()` to see gradients appear.
+
+### What you learned
+
+This script is the whole idea behind neural network training:
+
+- The **forward pass** builds a computation graph and produces a loss.
+- The **backward pass** (`backward()`) finds how each weight affects that loss.
+- The **update step** nudges each weight in the direction that lowers the loss.
+
+Large models such as language models use the same loop. They have billions of weights and far more data, but the steps are the same ones you just ran.
