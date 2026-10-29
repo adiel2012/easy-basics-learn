@@ -9,6 +9,7 @@ Each guide starts from zero and builds up one small step at a time. If something
 | Topic | Guide | In one sentence |
 |---|---|---|
 | Machine learning | [MLP Inference: XOR](mlp_xor_inference.md) | How a small trained neural network turns two inputs into an answer, step by step |
+| Machine learning | [The Chain Rule](chain_rule.md) | The simple math rule that lets a network work out how each weight affects the error |
 | Machine learning | [Backpropagation](backpropagation.md) | How a neural network learns by working out which weights to blame and nudging them |
 | Machine learning | [Tokenization](tokenization.md) | How text is cut into small pieces and turned into numbers a computer can use |
 | Machine learning | [Attention Blocks](attention_blocks.md) | How each word in a sentence decides which other words to pay attention to |

@@ -23,6 +23,7 @@ forward  →  loss  →  backward  →  update  →  (repeat)
 
 - **[MLP Inference: XOR](mlp_xor_inference.md)**: how the forward pass works. This guide uses the same network shape and the same symbols.
 - **Basic derivatives**: a derivative tells you how much an output changes when an input changes a little. Section 4 lists the few rules you need.
+- **[The Chain Rule](chain_rule.md)** (optional): a focused guide to the one math rule backpropagation is built on.
 
 ## 3. The key terms
 
