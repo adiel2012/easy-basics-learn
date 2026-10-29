@@ -118,6 +118,40 @@ Conceptually, a mask says which **query–key pairs** are allowed, so its patter
 
 In real code, the **stored** mask is often smaller and is automatically repeated (**broadcast**) across the batch, the attention heads or the query rows. For example, a padding mask only needs one row per text, because every query blocks the same columns.
 
+### In code (NumPy)
+
+Every mask in Section 5 comes with a short NumPy snippet. They all use this setup. Masks are stored as **True = allowed, False = blocked**, and `masked_softmax` turns False into −∞ before softmax:
+
+```python
+import numpy as np
+
+n = 4                          # number of tokens
+i = np.arange(n)[:, None]      # row index (query),  shape (4, 1)
+j = np.arange(n)[None, :]      # column index (key), shape (1, 4)
+
+def show(mask):
+    for row in mask:
+        print(" ".join("✓" if ok else "·" for ok in row))
+
+def masked_softmax(scores, mask):
+    # mask: True = allowed, False = blocked
+    s = np.where(mask, scores, -np.inf)            # blocked -> -inf
+    e = np.exp(s - s.max(axis=-1, keepdims=True))  # e^(-inf) = 0
+    return e / e.sum(axis=-1, keepdims=True)
+```
+
+`i` is a column and `j` is a row, so comparing them (like `j <= i`) produces a full 4 × 4 table, one cell per (query, key) pair.
+
+Check the worked example above:
+
+```python
+scores = np.array([1., 2., 0., 3.])
+print(masked_softmax(scores, np.array([True, True, True, True])).round(3))
+# [0.087 0.237 0.032 0.644]
+print(masked_softmax(scores, np.array([True, True, False, False])).round(3))
+# [0.269 0.731 0.    0.   ]
+```
+
 ## 5. The mask types, one by one
 
 ### 5.1 No mask (full attention)
@@ -129,6 +163,13 @@ In real code, the **stored** mask is often smaller and is automatically repeated
 ✓ ✓ ✓ ✓
 ✓ ✓ ✓ ✓
 ✓ ✓ ✓ ✓
+```
+
+**In NumPy:**
+
+```python
+mask = np.ones((n, n), dtype=bool)   # everything allowed
+show(mask)
 ```
 
 **Why:** when the whole input is already known and nothing is being generated, there's nothing to hide. Each token can use context from both sides.
@@ -149,6 +190,13 @@ In real code, the **stored** mask is often smaller and is automatically repeated
 ```
 
 The allowed cells form a triangle: everything on or below the diagonal.
+
+**In NumPy:**
+
+```python
+mask = j <= i          # key position ≤ query position
+show(mask)
+```
 
 **Why:** a text generator writes one token at a time (see [LLM Inference](llm_inference.md)). When it's really generating, the following tokens don't exist yet. During training, the whole text **is** available, but the model is learning to predict each next token, so the tokens after each position must be **hidden** from it. The mask does that, so the model can't learn to cheat by peeking ahead.
 
@@ -173,6 +221,16 @@ The allowed cells form a triangle: everything on or below the diagonal.
 
 It blocks a whole **column**: no token may look at the padding.
 
+**In NumPy:**
+
+```python
+is_real = np.array([True, True, True, False])   # token 4 is padding
+mask = np.broadcast_to(is_real, (n, n))          # same row for every query
+show(mask)
+```
+
+In real code you'd usually keep just `is_real` (one row) and let NumPy broadcast it, as explained in Section 4.
+
 **Why:** texts in a batch have different lengths, but they're processed together as one rectangular block. Short texts are filled up with padding tokens to match the longest one. Padding is just a placeholder for batching, not real content, so nobody should pay attention to it.
 
 ```
@@ -195,6 +253,16 @@ It blocks a whole **column**: no token may look at the padding.
 ✓ ✓ · ·
 · ✓ ✓ ·
 · · ✓ ✓
+```
+
+**In NumPy:**
+
+```python
+w = 2                               # window size (itself + 1 before)
+mask = (j <= i) & (i - j < w)       # causal AND close enough
+show(mask)
+print(masked_softmax(scores, mask[3]).round(3))   # token 4's row
+# [0.    0.    0.047 0.953]
 ```
 
 **Why:** full attention compares every token with every token, so the number of pairs grows like n × n. For 100,000 tokens, that's 10 billion pairs. With a fixed window of size w, the number of pairs grows only like n × w. (In math notation: O(n·w) instead of O(n²).) This saving only happens if the code actually skips the blocked pairs. Building a full n × n mask and still computing every pair gives the same result, but no speed-up.
@@ -229,6 +297,17 @@ Example with w = 2: in layer 1, token 4 sees token 3. But in layer 1, token 3 al
 ✓ · ✓ ✓      ← token 4 sees global token 1, itself, and neighbour 3
 ```
 
+**In NumPy:**
+
+```python
+is_global = np.array([True, False, False, False])  # token 1 is global
+local = np.abs(i - j) <= 1                          # neighbours on both sides
+mask = local | is_global[:, None] | is_global[None, :]
+show(mask)
+```
+
+`is_global[:, None]` lets the global token **see** everyone (its whole row). `is_global[None, :]` lets everyone **see** the global token (its whole column).
+
 **Why:** local windows are cheap but short-sighted. A few global tokens act like **messengers**: they collect information from the whole text and share it with everyone. Some designs also add a few **random** connections.
 
 **Where it's used:** Longformer (window + global) and BigBird (window + global + random).
@@ -250,6 +329,14 @@ Example with w = 2: in layer 1, token 4 sees token 3. But in layer 1, token 3 al
 
 Compare with the causal mask: the **prefix–prefix** region (top-left 2 × 2 block) is now bidirectional, so token 1 can also see token 2. The rest (the generated part) stays causal.
 
+**In NumPy:**
+
+```python
+P = 2                            # prefix length
+mask = (j <= i) | (j < P)        # causal, OR the key is in the prefix
+show(mask)
+```
+
 **Why:** the prefix is fully given in advance, so there's no reason to hide parts of it from itself. Letting it look both ways can help the model understand the input better. The answer is still generated one token at a time, so that part stays causal.
 
 **Where it's used:** some language models trained as "prefix language models".
@@ -268,6 +355,15 @@ Compare with the causal mask: the **prefix–prefix** region (top-left 2 × 2 bl
 ```
 
 The allowed cells form separate blocks along the diagonal, one per document.
+
+**In NumPy:**
+
+```python
+doc = np.array([0, 0, 1, 1])     # tokens 1–2: doc A, tokens 3–4: doc B
+same_doc = doc[:, None] == doc[None, :]
+mask = same_doc & (j <= i)       # same document AND causal
+show(mask)
+```
 
 **Why:** packing documents end to end avoids wasting space on padding. But a sentence from document B shouldn't get information from an unrelated document A. This mask keeps them separate.
 
@@ -290,6 +386,15 @@ decoder token 3    ✓      ✓      ✓      ·
 
 Shape: **3 × 4** (decoder length × encoder length).
 
+**In NumPy:**
+
+```python
+enc_is_real = np.array([True, True, True, False])  # encoder token 4 is padding
+n_dec = 3                                          # decoder tokens
+mask = np.broadcast_to(enc_is_real, (n_dec, 4))    # shape (3, 4): not square
+show(mask)
+```
+
 **Why:** the decoder may see the **whole** input sentence; it's already known. So a causal mask is generally unnecessary here, although padding in the input may still need to be masked. The causal mask is applied in the decoder's **self**-attention instead.
 
 **Where it's used:** translation and other encoder–decoder models, like the original Transformer and T5.
@@ -311,6 +416,21 @@ Example: **causal + padding**, where token 4 is padding:
 ```
 
 The padding mask blocks column 4 in **every** row. The causal mask already blocks that column in the first three rows, so the combined mask visibly changes only the last row: token 4 can no longer look at itself, because it's padding.
+
+**In NumPy:**
+
+```python
+causal  = j <= i
+padding = np.broadcast_to(is_real, (n, n))
+
+# Boolean masks: combine with logical AND
+combined = causal & padding
+show(combined)
+
+# Additive masks: combine by adding (any -inf wins)
+additive = np.where(causal, 0.0, -np.inf) + np.where(padding, 0.0, -np.inf)
+print(additive)
+```
 
 ### Related ideas that are *not* attention masks
 
