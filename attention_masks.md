@@ -152,6 +152,8 @@ The allowed cells form a triangle: everything on or below the diagonal.
 
 **Why:** a text generator writes one token at a time (see [LLM Inference](llm_inference.md)). When it's really generating, the following tokens don't exist yet. During training, the whole text **is** available, but the model is learning to predict each next token, so the tokens after each position must be **hidden** from it. The mask does that, so the model can't learn to cheat by peeking ahead.
 
+(A related but separate step: during training, the **targets** are shifted by one position, so position i is asked to predict token i + 1. The target shift decides *what* each position predicts; the causal mask decides *what it's allowed to see*. They work together but are different operations.)
+
 **Where it's used:** GPT-style language models (decoders).
 
 **Picture it:** reading a book with a sheet of paper covering everything after the current word.
@@ -308,7 +310,7 @@ Example: **causal + padding**, where token 4 is padding:
 ✓ ✓ ✓ ✓          ✓ ✓ ✓ ·          ✓ ✓ ✓ ·
 ```
 
-Only the last row changed: token 4 can no longer look at itself, because it's padding.
+The padding mask blocks column 4 in **every** row. The causal mask already blocks that column in the first three rows, so the combined mask visibly changes only the last row: token 4 can no longer look at itself, because it's padding.
 
 ### Related ideas that are *not* attention masks
 
@@ -336,7 +338,7 @@ Three kinds of "mask" are easy to mix up:
 - A mask says, for each pair of tokens, **allowed or blocked**.
 - Conceptually, a mask blocks selected query–key pairs **before softmax**. In the additive version, **0** leaves a score unchanged and **−∞** blocks it, giving a weight of exactly 0. Implementations may instead use true/false (Boolean) masks or large finite negative values.
 - Its pattern lines up with the score matrix (one row per query, one column per key), and it never changes the shape of the scores.
-- Combine masks by adding them: a cell is allowed only if **all** masks allow it.
+- Combine masks by **intersecting** their allowed positions: a cell is allowed only if **all** masks allow it. With additive masks, add them; with Boolean masks, use a logical AND.
 
 | Mask | Rule in one line | Main reason |
 |---|---|---|
