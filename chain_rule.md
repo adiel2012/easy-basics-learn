@@ -166,7 +166,7 @@ Step 3:  dL/da = dL/db · db/da          (reuse dL/db)
 Step 4:  dL/dx = dL/da · da/dx          (reuse dL/da)
 ```
 
-Each step costs **one multiplication**, because the long product to its right is already computed. Without reuse, you'd recompute the same products over and over for every parameter. **This reuse is what makes backpropagation fast**: it's the chain rule, computed from the output backwards.
+Each link reuses a gradient that's already computed and multiplies it by the local derivative. When several paths meet (Rule 3), their contributions are added. Without reuse, you'd recompute the same long products over and over for every parameter. **This reuse is what makes backpropagation fast**: it's the chain rule, computed from the output backwards.
 
 ## 5. Try it yourself: the chain rule inside a neural network
 
@@ -287,6 +287,8 @@ eps = 1e-6
 print((loss(1, w11=0.5 + eps) - loss(1)) / eps)   # ≈ -0.196  (∂L/∂w11, Example 2)
 print((loss(1 + eps) - loss(1)) / eps)            # ≈ -0.0098 (∂L/∂x1,  Example 3)
 ```
+
+This **forward-difference** estimate is approximate. Using a smaller step can improve accuracy, up to the point where the computer's floating-point rounding becomes significant.
 
 ## 6. Common mistakes
 
