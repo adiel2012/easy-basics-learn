@@ -529,10 +529,10 @@ This is a particular outcome of this initialization and training setup (the star
 If a hidden value before ReLU is **negative**, ReLU's derivative is 0, and **no error passes through**. For example, if a₂ had been −0.3 in Section 5:
 
 ```
-δa₂ = ∂L/∂h₂ · 0 = 0.294 · 0 = 0
+δa₂ = ∂L/∂h₂ · 0 = 0
 ```
 
-Then w₁₂, w₂₂ and d₂ would all get zero gradient in that step. If a neuron's pre-activation aⱼ stays negative for **every** training example, ReLU blocks the gradient for that neuron, so its incoming weights and bias stop learning through this path. This is called a **dead ReLU**.
+Whatever the value of the incoming gradient ∂L/∂h₂, a negative pre-activation makes ReLU's derivative zero, which blocks the gradient for that step. Then w₁₂, w₂₂ and d₂ would all get zero gradient in that step. If a neuron's pre-activation aⱼ stays negative for **every** training example, ReLU blocks the gradient for that neuron, so its incoming weights and bias stop learning through this path. This is called a **dead ReLU**.
 
 ### Choosing the learning rate
 
