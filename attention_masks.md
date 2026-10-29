@@ -195,7 +195,7 @@ It blocks a whole **column**: no token may look at the padding.
 · · ✓ ✓
 ```
 
-**Why:** full attention compares every token with every token, so the number of pairs grows like n × n. For 100,000 tokens, that's 10 billion pairs. With a fixed window of size w, the number of pairs grows only like n × w. (In math notation: O(n·w) instead of O(n²).)
+**Why:** full attention compares every token with every token, so the number of pairs grows like n × n. For 100,000 tokens, that's 10 billion pairs. With a fixed window of size w, the number of pairs grows only like n × w. (In math notation: O(n·w) instead of O(n²).) This saving only happens if the code actually skips the blocked pairs. Building a full n × n mask and still computing every pair gives the same result, but no speed-up.
 
 **Example:** token 4 with scores [1, 2, 0, 3] and a window of 2 sees only tokens 3 and 4:
 
@@ -222,9 +222,9 @@ Example with w = 2: in layer 1, token 4 sees token 3. But in layer 1, token 3 al
 
 ```
 ✓ ✓ ✓ ✓      ← token 1 (global) sees everyone
-✓ ✓ ✓ ·      ← sees global token 1 and neighbours 1, 3
-✓ ✓ ✓ ✓      ← sees global token 1 and neighbours 2, 4
-✓ · ✓ ✓      ← sees global token 1 and neighbour 3
+✓ ✓ ✓ ·      ← token 2 sees global token 1, itself, and neighbour 3
+✓ ✓ ✓ ✓      ← token 3 sees global token 1, itself, and neighbours 2, 4
+✓ · ✓ ✓      ← token 4 sees global token 1, itself, and neighbour 3
 ```
 
 **Why:** local windows are cheap but short-sighted. A few global tokens act like **messengers**: they collect information from the whole text and share it with everyone. Some designs also add a few **random** connections.
@@ -326,7 +326,7 @@ Three kinds of "mask" are easy to mix up:
 ### Common mistakes
 
 - **Blocking with 0 instead of −∞.** Adding 0 changes nothing. The score must become −∞ so that e^score = 0 (or, in practice, a very large negative number, so the weight is negligible).
-- **Applying the mask after softmax.** Setting weights to 0 after softmax leaves the remaining weights not adding up to 1. Mask **before** softmax.
+- **Applying the mask after softmax without renormalizing.** Setting blocked weights to 0 after softmax generally leaves the remaining weights adding up to less than 1. Masking the scores **before** softmax automatically makes the allowed weights add up to 1.
 - **Blocking a whole row.** If every cell in a row is blocked, softmax has nothing to share and divides 0 by 0. Make sure each query can see at least one key (usually itself).
 - **Mixing up rows and columns.** Rows are the tokens **looking**; columns are the tokens **being looked at**. The padding mask blocks **columns**.
 - **Confusing attention masks with `[MASK]` tokens.** See above: two different ideas.
@@ -334,7 +334,7 @@ Three kinds of "mask" are easy to mix up:
 ## 7. Remember this
 
 - A mask says, for each pair of tokens, **allowed or blocked**.
-- It's added to the scores **before softmax**: **0** keeps a cell, **−∞** blocks it, giving a weight of exactly 0.
+- Conceptually, a mask blocks selected query–key pairs **before softmax**. In the additive version, **0** leaves a score unchanged and **−∞** blocks it, giving a weight of exactly 0. Implementations may instead use true/false (Boolean) masks or large finite negative values.
 - Its pattern lines up with the score matrix (one row per query, one column per key), and it never changes the shape of the scores.
 - Combine masks by adding them: a cell is allowed only if **all** masks allow it.
 
