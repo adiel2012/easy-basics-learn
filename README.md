@@ -18,6 +18,12 @@ Each guide starts from zero and builds up one small step at a time. If something
 | Machine learning | [LLM Inference](llm_inference.md) | How a language model writes its answer one token at a time |
 | Machine learning | [Vision Transformer (ViT)](vit.md) | How a transformer understands images by cutting them into patches and treating them like words |
 | Information theory | [Shannon Entropy](shannon_entropy.md) | How much surprise or uncertainty a random outcome carries, measured in bits |
+| Information theory | [Cross-Entropy](cross_entropy.md) | How well predicted probabilities match real outcomes, measured as average surprise in bits |
+| Information theory | [KL Divergence](kl_divergence.md) | The extra bits you pay for using a wrong probability distribution |
+| Information theory | [Information Gain](information_gain.md) | How much a question reduces uncertainty, used to choose decision tree splits |
+| Information theory | [Mutual Information](mutual_information.md) | How much knowing one variable tells you about another |
+| Information theory | [Conditional Entropy](conditional_entropy.md) | The uncertainty left about one variable after you learn another |
+| Probability | [Bayesian Inference](bayesian_inference.md) | How to update a belief when new evidence arrives |
 
 ## Code examples
 
