@@ -17,7 +17,7 @@ Often the input doesn't affect the output directly. It goes through **several st
 1 dollar → 0.9 × 160 = 144 yen
 ```
 
-(This assumes both exchange rates stay constant, which is exactly what a derivative assumes for a small change.)
+(This assumes both exchange rates stay constant. That makes the analogy a simple linear example of the chain rule. Real derivatives also work for curved, nonlinear relationships: they measure the rate of change locally, at the current point.)
 
 You never needed a "dollars to yen" table. You **multiplied the rates** along the chain. Derivatives are rates too ("how many units of output per unit of input"), so they chain the same way.
 
