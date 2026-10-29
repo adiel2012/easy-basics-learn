@@ -93,11 +93,13 @@ It's simpler than it looks:
 
 ### Phase 3: backward pass
 
+Think of the error as a **message that travels backward**. First, we find how the loss changes at the output. Then we pass that message back, step by step, to find how the loss depends on each hidden neuron and each weight.
+
 **The whole backward pass is three moves:**
 
 | Move | Formula | Question it answers |
 |---|---|---|
-| 1. Output error | δz = p − y | How does the loss change when the output logit changes? (Its sign shows which direction reduces the loss.) |
+| 1. Output gradient (error signal) | δz = p − y | How does the loss change when the output logit changes? (Its sign shows which direction reduces the loss.) |
 | 2. Send the error back | δaⱼ = δz · vⱼ · ReLU′(aⱼ) | How does the loss change when each hidden neuron's pre-activation (aⱼ) changes? |
 | 3. Weight gradients | ∂L/∂wᵢⱼ = δaⱼ · xᵢ  (and ∂L/∂vⱼ = δz · hⱼ) | How does the loss change when each weight changes? (Receiving neuron's error signal × the input to that weight.) |
 
@@ -123,7 +125,7 @@ We compute the derivatives **from the output backwards**, reusing each result fo
 | ReLU | h = max(0, a) | ∂h/∂a = 1 if a > 0, otherwise 0 |
 | Weighted sum | a₁ = w₁₁x₁ + w₂₁x₂ + d₁ | ∂a₁/∂w₁₁ = x₁,  ∂a₁/∂w₂₁ = x₂,  ∂a₁/∂d₁ = 1 |
 
-(At exactly a = 0, ReLU has no derivative, because its graph has a corner there. The usual convention, used here, is to take 0.)
+(At a = 0, ReLU is not differentiable: its graph has a corner there. In this guide, we use the conventional subgradient value of 0, as most machine-learning libraries do.)
 
 **A useful shortcut.** Multiply the first two rows together:
 
@@ -161,6 +163,12 @@ Hidden layer:
 ```
 
 The pattern: **weight gradient = error signal at the neuron the weight connects to × the input to that weight**.
+
+Why this makes sense:
+
+- A **large input** means a change in the weight has a larger effect on the neuron's value, so the gradient is larger.
+- A **zero input** means the weight has no effect on the current example, so its gradient is zero.
+- The **error signal's sign** decides whether increasing the weight would raise or lower the loss.
 
 ### Phase 4: update (gradient descent)
 
@@ -361,7 +369,7 @@ The prediction moved toward the correct answer (1), and the loss dropped. **That
 
 With a suitable learning rate, an update should reduce the loss locally, as it did here. It's not guaranteed: with a learning rate that's too large, the loss can sometimes go up. That's why the loss is monitored during training.
 
-This step used **one** example. To learn all of XOR, the same process runs over all four examples, many times; see [Appendix B](#appendix-b-training-on-all-of-xor).
+This step updated the parameters using **one example's** gradients. To learn all of XOR, [Appendix B](#appendix-b-training-on-all-of-xor) instead **averages** the gradients from all four examples before making each update, and repeats this many times.
 
 ## 6. Common mistakes
 
@@ -526,7 +534,7 @@ This is a particular outcome of this initialization and training setup (the star
 
 ### ReLU can block the error
 
-If a hidden value before ReLU is **negative**, ReLU's derivative is 0, and **no error passes through**. For example, if a₂ had been −0.3 in Section 5:
+If a hidden value before ReLU is **negative**, ReLU's derivative is 0, and **no error passes through**. For example, suppose a₂ were −0.3 during a forward pass. Regardless of the incoming gradient:
 
 ```
 δa₂ = ∂L/∂h₂ · 0 = 0
