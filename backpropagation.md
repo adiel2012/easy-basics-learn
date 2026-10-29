@@ -4,7 +4,7 @@
 
 ## 1. In simple words
 
-In the [MLP Inference](mlp_xor_inference.md) guide, the weights were already given. But where do good weights come from? A network starts with **initial weights**, often chosen randomly, and gives bad answers. **Training** improves the weights, step by step.
+In the [MLP Inference](mlp_xor_inference.md) guide, the weights were already given. But where do good weights come from? A network starts with **initial weights**, often chosen randomly, and may give inaccurate answers. **Training** improves the weights, step by step.
 
 Each training step has four parts:
 
@@ -97,9 +97,9 @@ It's simpler than it looks:
 
 | Move | Formula | Question it answers |
 |---|---|---|
-| 1. Output error | δz = p − y | How should the output logit change to reduce the loss? |
-| 2. Send the error back | δaⱼ = δz · vⱼ · ReLU′(aⱼ) | How much did each hidden neuron contribute to the loss? |
-| 3. Weight gradients | ∂L/∂wᵢⱼ = δaⱼ · xᵢ  (and ∂L/∂vⱼ = δz · hⱼ) | Multiply the receiving neuron's error signal by the input to that weight. |
+| 1. Output error | δz = p − y | How does the loss change when the output logit changes? (Its sign shows which direction reduces the loss.) |
+| 2. Send the error back | δaⱼ = δz · vⱼ · ReLU′(aⱼ) | How does the loss change when each hidden neuron's pre-activation (aⱼ) changes? |
+| 3. Weight gradients | ∂L/∂wᵢⱼ = δaⱼ · xᵢ  (and ∂L/∂vⱼ = δz · hⱼ) | How does the loss change when each weight changes? (Receiving neuron's error signal × the input to that weight.) |
 
 ReLU′(a) is ReLU's derivative: 1 if a > 0, otherwise 0.
 
@@ -424,7 +424,7 @@ Try answering before reading on.
 
 ### Numerical gradient check
 
-You can test any gradient without calculus: nudge one parameter slightly and see how the loss changes. Increase v₁ by 0.001 (from 0.4 to 0.401), keeping all other weights at their starting values.
+You can check a gradient numerically: nudge one parameter slightly and estimate how the loss changes per unit change in that parameter. This gives an estimate, not the exact derivative. Increase v₁ by 0.001 (from 0.4 to 0.401), keeping all other weights at their starting values.
 
 Because the change in loss is tiny, the losses must be computed with **many decimals**, or rounding will swamp the result:
 
@@ -514,13 +514,15 @@ train(0.2, -0.1)
 | 500 | 0.012 | 0.007 | 0.969 | 0.996 | 0.005 |
 | 5000 | 0.001 | 0.000 | 0.998 | 1.000 | 0.000 |
 
+Predictions are rounded to three decimals; 1.000 and 0.000 are not exact probabilities (sigmoid never reaches exactly 0 or 1).
+
 The targets are 0, 1, 1, 0, and after training all four answers are right. The final weights differ from the hand-picked ones in the inference guide, but they solve XOR just as well: there are many good solutions.
 
 ### Starting weights matter
 
-**Run 2** changes only w₂₁ and w₂₂, to 0.2 and −0.1. In this run, learning stalls: the average loss stays at 0.693 from epoch 100 to 5000, and every prediction approaches 0.5 (by epoch 500, all four print as 0.5 at 3 decimals). (A loss of 0.693 = ln 2 is exactly what predicting 0.5 for everything gives.)
+**Run 2** changes only w₂₁ and w₂₂, to 0.2 and −0.1. In this run, learning stalls: the average loss stays at 0.693 from epoch 100 to 5000, and training converges to a constant prediction of 0.5 for every example (by epoch 500, all four print as 0.5 at 3 decimals). A loss of 0.693 = ln 2 is exactly what predicting 0.5 for everything gives.
 
-Here, training converges to a constant prediction of 0.5 for every example. This is a particular outcome of this initialization and training setup (the starting weights, the learning rate, averaging the gradients), not typical training behavior. The general lesson is that **some starting points lead to slow learning or stuck neurons**, especially in a network this small. Common remedies: different random starting weights, more hidden neurons, or a different learning rate.
+This is a particular outcome of this initialization and training setup (the starting weights, the learning rate, averaging the gradients), not typical training behavior. The general lesson is that **some starting points lead to slow learning or stuck neurons**, especially in a network this small. Common remedies: different random starting weights, more hidden neurons, or a different learning rate.
 
 ### ReLU can block the error
 
@@ -530,7 +532,7 @@ If a hidden value before ReLU is **negative**, ReLU's derivative is 0, and **no 
 δa₂ = ∂L/∂h₂ · 0 = 0.294 · 0 = 0
 ```
 
-Then w₁₂, w₂₂ and d₂ would all get zero gradient in that step. If a neuron's input is negative for **every** example, it never receives an error and stops learning; this is called a **dead ReLU**.
+Then w₁₂, w₂₂ and d₂ would all get zero gradient in that step. If a neuron's pre-activation aⱼ stays negative for **every** training example, ReLU blocks the gradient for that neuron, so its incoming weights and bias stop learning through this path. This is called a **dead ReLU**.
 
 ### Choosing the learning rate
 
