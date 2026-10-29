@@ -44,14 +44,18 @@ forward  →  loss  →  backward  →  update  →  (repeat)
 The same 2-2-1 shape as in the inference guide: 2 inputs, 2 hidden neurons with ReLU, 1 output neuron with sigmoid.
 
 ```
- inputs          hidden layer           output
-                 (ReLU)                 (sigmoid)
+ INPUTS        HIDDEN LAYER (ReLU)            OUTPUT (sigmoid)
 
-  x₁ ──┬──────▶  a₁ → h₁ ──┐
-       │   ╲  ╱            ├──────▶  z → p
-       │    ╳              │
-  x₂ ──┴──────▶  a₂ → h₂ ──┘
+ x₁ ─(w₁₁)─┐
+           ├─▶ [ h₁ │ bias d₁ │ ReLU ] ─(v₁)─┐
+ x₂ ─(w₂₁)─┘                                 │
+                                             ├─▶ [ z │ bias c │ sigmoid ] ─▶ p ─▶ L
+ x₁ ─(w₁₂)─┐                                 │
+           ├─▶ [ h₂ │ bias d₂ │ ReLU ] ─(v₂)─┘
+ x₂ ─(w₂₂)─┘
 ```
+
+How to read it: each line is labelled with its **weight** (wᵢⱼ goes from input xᵢ to hidden neuron hⱼ; vⱼ goes from hⱼ to the output). Each neuron, in brackets, adds up what arrives plus its **bias**, then applies its function. x₁ and x₂ appear twice because each input feeds **both** hidden neurons. At the end, the prediction p is compared with the correct answer to get the loss L. This is the same picture as in the [inference guide](mlp_xor_inference.md), with symbols instead of numbers, because here the numbers will **change** during training.
 
 | Symbol | Meaning |
 |---|---|
@@ -200,6 +204,20 @@ Backpropagation only **calculates** the gradients. Gradient descent **uses** the
 | w₂₁ | −0.4 | | w₂₂ | 0.4 | | v₂ | −0.6 |
 | d₁ | 0.1 | | d₂ | 0.2 | | c | 0.1 |
 
+The same network with these starting values on its lines:
+
+```
+ INPUTS               HIDDEN LAYER (ReLU)                         OUTPUT (sigmoid)
+
+ x₁ ─(w₁₁ = 0.5)──┐
+                  ├─▶ [ h₁ │ bias d₁ = 0.1 │ ReLU ] ─(v₁ = 0.4)──┐
+ x₂ ─(w₂₁ = −0.4)─┘                                              │
+                                                                 ├─▶ [ z │ bias c = 0.1 │ sigmoid ] ─▶ p
+ x₁ ─(w₁₂ = 0.3)──┐                                              │
+                  ├─▶ [ h₂ │ bias d₂ = 0.2 │ ReLU ] ─(v₂ = −0.6)─┘
+ x₂ ─(w₂₂ = 0.4)──┘
+```
+
 ### Phase 1: forward pass
 
 **Hidden layer, mix**
@@ -318,6 +336,25 @@ w₂₁ and w₂₂ get **zero** gradient. Because x₂ = 0, these weights make 
 | d₂ | 0.294 | decrease d₂ |
 
 Why does w₁₂ go **down**? h₂ feeds the output through v₂ = −0.6, a negative weight. A bigger h₂ makes z smaller, which is the wrong direction. So the weights that make h₂ bigger are lowered.
+
+**The backward pass as a picture.** The error signal starts at the loss and travels **right to left**, the reverse of the forward pass:
+
+```
+ WEIGHT GRADIENTS       HIDDEN LAYER                           OUTPUT
+
+ ∂L/∂w₁₁ = −0.196 ◀─┐
+                    ├── [ h₁ │ δa₁ = −0.196 ] ◀─(× v₁ = 0.4)──┐
+ ∂L/∂w₂₁ =  0     ◀─┘                                         │
+                                                              ├── [ z │ δz = p − y = −0.490 ] ◀── L
+ ∂L/∂w₁₂ =  0.294 ◀─┐                                         │
+                    ├── [ h₂ │ δa₂ =  0.294 ] ◀─(× v₂ = −0.6)─┘
+ ∂L/∂w₂₂ =  0     ◀─┘
+```
+
+- At the output, the error signal is δz = −0.490.
+- Going back along each output weight, it's multiplied by that weight: δz · v₁ = −0.196 reaches h₁, and δz · v₂ = 0.294 reaches h₂. Both neurons are active (a > 0), so ReLU passes these through unchanged, giving δa₁ and δa₂.
+- At the inputs, each hidden error signal is multiplied by the input on that line, giving the weight gradients. Lines from x₂ = 0 get 0.
+- Not shown, to keep the picture small: the gradients of the output weights (∂L/∂v₁ = −0.294, ∂L/∂v₂ = −0.245) and of the biases (∂L/∂c = −0.490, ∂L/∂d₁ = −0.196, ∂L/∂d₂ = 0.294). They're all in the table above.
 
 ### Phase 4: update
 
