@@ -1,6 +1,6 @@
 # The Chain Rule: The Math Behind Backpropagation
 
-> **The one idea in this guide:** when one thing affects another **through a chain of steps**, the total effect is the **product** of the effects of each step. If there are **several paths**, you **add** the paths. That's all backpropagation uses.
+> **The one idea in this guide:** when one quantity affects another **through a chain of steps**, **multiply the local derivatives** along the chain. When **several paths** connect an input to the output, **add** their contributions. Backpropagation applies these two rules efficiently to compute neural-network gradients.
 
 ## 1. In simple words
 
@@ -16,6 +16,8 @@ Often the input doesn't affect the output directly. It goes through **several st
 
 1 dollar → 0.9 × 160 = 144 yen
 ```
+
+(This assumes both exchange rates stay constant, which is exactly what a derivative assumes for a small change.)
 
 You never needed a "dollars to yen" table. You **multiplied the rates** along the chain. Derivatives are rates too ("how many units of output per unit of input"), so they chain the same way.
 
@@ -151,7 +153,7 @@ dz/dx = 2 + 4 = 6
 
 **Check:** z = (x + 1)(2x) = 2x² + 2x, so dz/dx = 4x + 2 = 4·1 + 2 = 6. ✅
 
-**Why add?** A small nudge to x causes a small change in a **and** a small change in b. Both changes reach z, and for small nudges, their effects simply add up.
+**Why add?** A small change in x changes **both** a and b. Each of those changes contributes to the change in z. To first order (that is, ignoring much smaller interaction terms that vanish as the nudge shrinks), these contributions add, which is why we add the path derivatives.
 
 ### Rule 4: go backwards and reuse
 
@@ -166,7 +168,7 @@ Step 3:  dL/da = dL/db · db/da          (reuse dL/db)
 Step 4:  dL/dx = dL/da · da/dx          (reuse dL/da)
 ```
 
-Each link reuses a gradient that's already computed and multiplies it by the local derivative. When several paths meet (Rule 3), their contributions are added. Without reuse, you'd recompute the same long products over and over for every parameter. **This reuse is what makes backpropagation fast**: it's the chain rule, computed from the output backwards.
+Each link reuses a gradient that's already computed and multiplies it by the local derivative: ∂L/∂x = ∂L/∂y · ∂y/∂x, when y depends on x through that single connection. When **one operation has several inputs** (like z = a·b), each input gets its own gradient, calculated separately. When **several paths lead back to the same variable** (Rule 3), their contributions are added. So backpropagation isn't always a single chain of multiplications: it multiplies along each link and adds where paths merge. Without reuse, you'd recompute the same long products over and over for every parameter. **This reuse is what makes backpropagation fast**: it's the chain rule, computed from the output backwards.
 
 ## 5. Try it yourself: the chain rule inside a neural network
 
@@ -288,7 +290,7 @@ print((loss(1, w11=0.5 + eps) - loss(1)) / eps)   # ≈ -0.196  (∂L/∂w11, Ex
 print((loss(1 + eps) - loss(1)) / eps)            # ≈ -0.0098 (∂L/∂x1,  Example 3)
 ```
 
-This **forward-difference** estimate is approximate. Using a smaller step can improve accuracy, up to the point where the computer's floating-point rounding becomes significant.
+This **forward-difference** estimate uses a small but finite change, so it's approximate. For a smooth function, it approaches the true derivative as the step size shrinks, until the computer's floating-point rounding becomes significant.
 
 ## 6. Common mistakes
 
@@ -296,7 +298,7 @@ This **forward-difference** estimate is approximate. Using a smaller step can im
 - **Evaluating at the wrong point.** Local derivatives use the **current** forward values. For z = y², dz/dy = 2y must use y = 6 from the forward pass, not some other y.
 - **Multiplying across paths instead of adding.** Within one path, **multiply**. Between paths, **add**.
 - **Recomputing instead of reusing.** Correct but slow. Going backwards and reusing results (Rule 4) is the whole point of backpropagation.
-- **Ignoring ReLU's derivative.** It's 1 when the input is positive and 0 when it's negative. A 0 anywhere in a path makes **that whole path** 0.
+- **Ignoring ReLU's derivative.** It's 1 when the input is positive and 0 when it's negative. (At exactly 0 it isn't defined in ordinary calculus; implementations choose a convention, commonly 0.) A zero derivative anywhere along a path makes **that path's contribution** zero. Other paths can still contribute to the total gradient.
 
 ## 7. Remember this
 
@@ -308,7 +310,7 @@ This **forward-difference** estimate is approximate. Using a smaller step can im
 ### Quick check
 
 1. y = 2x + 1 and z = y³. What is dz/dx at x = 1?
-2. 1 dollar = 0.9 euros and 1 euro = 160 yen. If you have 0.01 more dollars, how many more yen do you get?
+2. 1 dollar = 0.9 euros and 1 euro = 160 yen, and both rates stay constant. If you have 0.01 more dollars, how many more yen do you get?
 3. z = a·b with a = x and b = x. Using Rule 3, what is dz/dx? Check with z = x².
 4. In Example 2, why does the factor ∂h₁/∂a₁ equal 1? What would ∂L/∂w₁₁ be if a₁ had been negative?
 
@@ -319,7 +321,7 @@ Try answering before reading on.
 ### Check your answers
 
 1. Forward: y = 2·1 + 1 = 3. Local: dy/dx = 2, dz/dy = 3y² = 3·3² = 27. Multiply: dz/dx = 27 · 2 = **54**.
-2. Chain: 0.9 · 160 = 144 yen per dollar, so 0.01 · 144 = **1.44 more yen**.
+2. Chain: 0.01 · 0.9 · 160 = 0.01 · 144 = **1.44 more yen** (with constant rates).
 3. Path via a: ∂z/∂a · ∂a/∂x = b · 1 = x. Path via b: ∂z/∂b · ∂b/∂x = a · 1 = x. Add: **dz/dx = 2x**. Check: z = x², dz/dx = 2x. ✅
 4. Because a₁ = 0.6 > 0, and ReLU's derivative is 1 for positive inputs. If a₁ were negative, that factor would be 0, so the whole product, and ∂L/∂w₁₁, would be **0**.
 
