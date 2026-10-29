@@ -18,12 +18,24 @@ Each guide starts from zero and builds up one small step at a time. If something
 | Machine learning | [LLM Inference](llm_inference.md) | How a language model writes its answer one token at a time |
 | Machine learning | [Vision Transformer (ViT)](vit.md) | How a transformer understands images by cutting them into patches and treating them like words |
 | Information theory | [Shannon Entropy](shannon_entropy.md) | How much surprise or uncertainty a random outcome carries, measured in bits |
+| Information theory | [Conditional Entropy](conditional_entropy.md) | The uncertainty left about one variable after you learn another |
+| Information theory | [Mutual Information](mutual_information.md) | How much knowing one variable tells you about another |
+| Information theory | [Information Gain](information_gain.md) | How much a question reduces uncertainty, used to choose decision tree splits |
 | Information theory | [Cross-Entropy](cross_entropy.md) | How well predicted probabilities match real outcomes, measured as average surprise in bits |
 | Information theory | [KL Divergence](kl_divergence.md) | The extra bits you pay for using a wrong probability distribution |
-| Information theory | [Information Gain](information_gain.md) | How much a question reduces uncertainty, used to choose decision tree splits |
-| Information theory | [Mutual Information](mutual_information.md) | How much knowing one variable tells you about another |
-| Information theory | [Conditional Entropy](conditional_entropy.md) | The uncertainty left about one variable after you learn another |
 | Probability | [Bayesian Inference](bayesian_inference.md) | How to update a belief when new evidence arrives |
+
+## Learning path: information theory
+
+Read these guides in order. Each one uses ideas from the one before it.
+
+1. [Shannon Entropy](shannon_entropy.md): how much uncertainty is in one random outcome
+2. [Conditional Entropy](conditional_entropy.md): how much uncertainty is left after you learn a clue
+3. [Mutual Information](mutual_information.md): how much uncertainty the clue removed
+4. [Information Gain](information_gain.md): using that number to pick the best question
+5. [Cross-Entropy](cross_entropy.md): how surprised you are when your predicted probabilities are wrong
+6. [KL Divergence](kl_divergence.md): just the extra surprise caused by the wrong predictions
+7. [Bayesian Inference](bayesian_inference.md): how to update a belief when evidence arrives
 
 ## Code examples
 
@@ -54,6 +66,8 @@ These files go with the Mini Autograd guide. Keep them in the same folder.
 6. **Variations**: common extensions and mistakes to avoid
 7. **Remember this**: the key points in a few lines
 8. **Going further**: how it connects to bigger topics
+
+The information theory guides also start with a **Learning path** line. Where the logarithms get tricky, they include a **Numbers you'll need** table.
 
 ## How to use these guides
 

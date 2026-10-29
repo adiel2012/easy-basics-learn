@@ -1,5 +1,7 @@
 # Shannon Entropy
 
+> **Learning path:** **Shannon Entropy** → [Conditional Entropy](conditional_entropy.md) → [Mutual Information](mutual_information.md) → [Information Gain](information_gain.md) → [Cross-Entropy](cross_entropy.md) → [KL Divergence](kl_divergence.md) → [Bayesian Inference](bayesian_inference.md)
+
 Shannon entropy is one number that measures how uncertain a random process is, on average. Claude Shannon introduced it in 1948, and it is the foundation of information theory.
 
 Strictly speaking, entropy describes a whole probability distribution. **Surprise** describes one particular outcome. Entropy is the average surprise over all outcomes.
@@ -244,6 +246,7 @@ Work out the surprise of each face, multiply by its probability, and add the res
 ## Going further
 
 - **Data compression.** Huffman codes and ZIP-style compressors try to get close to the entropy limit.
-- **Cross-entropy loss.** Machine learning models compare predicted probabilities with the true answer using a close relative of this formula. See [Backpropagation](backpropagation.md) for how such losses are used in training.
+- **Next:** [Conditional Entropy](conditional_entropy.md) asks how much uncertainty is left after you learn a clue.
+- **Cross-entropy loss.** Machine learning models compare predicted probabilities with the true answer using a close relative of this formula. See [Cross-Entropy](cross_entropy.md).
 - **Tokenization.** Entropy helps explain why some text is easier to predict than other text. See [Tokenization](tokenization.md).
 - **Thermodynamics.** Gibbs entropy has the same mathematical form, with physical units added.

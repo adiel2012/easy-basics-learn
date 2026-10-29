@@ -1,103 +1,129 @@
 # KL Divergence
 
+> **Learning path:** [Shannon Entropy](shannon_entropy.md) → [Conditional Entropy](conditional_entropy.md) → [Mutual Information](mutual_information.md) → [Information Gain](information_gain.md) → [Cross-Entropy](cross_entropy.md) → **KL Divergence** → [Bayesian Inference](bayesian_inference.md)
+
 ## In simple words
 
-KL divergence measures the **extra cost** of using a guessed probability distribution Q when the true distribution is P. It is measured in bits.
+In the cross-entropy guide, the weather app had an average surprise of 1.2075 bits. Of that, 1 bit could not be avoided, because the weather really is uncertain. The other 0.2075 bits came only from the app's wrong numbers.
 
-- If Q matches P exactly, the extra cost is zero.
-- If Q is wrong, the extra cost is positive.
+**KL divergence is that extra part.** It measures how much you lose by using a predicted distribution Q when the truth is P.
 
-It is never negative. It is also **not a true distance**, because it is not symmetric: the cost of guessing Q when the truth is P is not the same as guessing P when the truth is Q.
+- If the prediction is perfect, the KL divergence is 0.
+- If the prediction is wrong, the KL divergence is positive.
+- It is never negative.
 
-Analogy: you pack for a sunny trip (Q), but it rains (P). The extra trouble of packing the wrong way is the KL divergence.
+One surprising fact: **the direction matters.** If the truth is 50/50 and you predict 75/25, you lose 0.208 bits. If the truth is 75/25 and you predict 50/50, you lose 0.189 bits. The cost depends on which one is the truth.
 
 ## What you need to know first
 
-- Shannon entropy and cross-entropy. See [Shannon Entropy](shannon_entropy.md) and [Cross-Entropy](cross_entropy.md).
-- Logarithms base 2, and how to compute a ratio inside a log.
-- Probabilities add to 1.
+- Shannon entropy. See [Shannon Entropy](shannon_entropy.md).
+- Cross-entropy. See [Cross-Entropy](cross_entropy.md).
+- Logs of fractions: log₂(a/b) = log₂ a − log₂ b.
 
 ## The key terms
 
 | Symbol | Meaning |
 |---|---|
 | P(x) | The true probability of outcome x |
-| Q(x) | The guessed probability of outcome x |
-| D_KL(P ‖ Q) | The KL divergence from Q to P, in bits |
+| Q(x) | The predicted probability of outcome x |
+| D_KL(P ‖ Q) | The KL divergence. The double bar just separates the two. **The truth goes first.** |
+
+## Numbers you'll need
+
+| Value | Result | Why |
+|---|---|---|
+| log₂ 2 | 1 | |
+| log₂(1/2) | −1 | |
+| log₂(3/2) | 0.585 | log₂ 3 − log₂ 2 = 1.585 − 1 |
+| log₂(2/3) | −0.585 | log₂ 2 − log₂ 3 = 1 − 1.585 |
 
 ## How it works
 
-The formula is:
+There are two ways to compute it.
 
-D_KL(P ‖ Q) = Σ P(x) · log₂ ( P(x) / Q(x) )
-
-Each term asks: how much more does the truth weight this outcome than the guess does? The term is weighted by the true probability P(x).
-
-There is a useful identity:
+**Way 1, by subtraction** (easiest if you already know the cross-entropy):
 
 D_KL(P ‖ Q) = H(P, Q) − H(P)
 
-So KL divergence is cross-entropy minus the unavoidable uncertainty. Other key facts:
+**Way 2, directly:**
 
-- It is always **≥ 0**.
-- It is **0 only when P = Q**.
-- It is **not symmetric**: D_KL(P ‖ Q) ≠ D_KL(Q ‖ P) in general.
+D_KL(P ‖ Q) = Σ P(x) · log₂ ( P(x) / Q(x) )
 
-### Example 1: The same numbers as the cross-entropy guide
+For each outcome, compare the truth with the prediction (P / Q), take log₂, and weight it by how often the outcome really happens (P).
 
-P = (1/2, 1/2), Q = (3/4, 1/4).
+**Watch out:** in Way 2, a single row can be **negative**. That happens when the prediction gave an outcome more probability than it deserves. The **total** is never negative.
 
-| Outcome | P | Q | P / Q | P × log₂(P / Q) |
-|---|---|---|---|---|
-| 1 | 1/2 | 3/4 | 2/3 | (1/2)(−0.585) = −0.2925 |
-| 2 | 1/2 | 1/4 | 2 | (1/2)(1) = 0.5 |
-| **Total** | | | | **D_KL = 0.2075 bits** |
+Key facts:
 
-This matches the extra cost found in the cross-entropy guide.
+- It is always ≥ 0.
+- It is 0 only when P = Q.
+- It is not symmetric: D_KL(P ‖ Q) is usually different from D_KL(Q ‖ P).
 
-### Example 2: Reversing the direction
+### Example 1: The weather app
 
-Now swap the roles: D_KL(Q ‖ P).
+Truth P = (1/2, 1/2). Prediction Q = (3/4, 1/4).
 
-| Outcome | Q | P | Q / P | Q × log₂(Q / P) |
-|---|---|---|---|---|
-| 1 | 3/4 | 1/2 | 3/2 | (3/4)(0.585) = 0.439 |
-| 2 | 1/4 | 1/2 | 1/2 | (1/4)(−1) = −0.25 |
-| **Total** | | | | **D_KL = 0.189 bits** |
+**Way 1:** from the cross-entropy guide, H(P, Q) = 1.2075 and H(P) = 1, so D_KL = **0.2075 bits**.
 
-The answer is 0.189, not 0.2075. The two directions differ, which is why KL divergence is not a true distance.
+**Way 2:**
+
+| Outcome | P | Q | P / Q | log₂(P / Q) | P × log₂(P / Q) |
+|---|---|---|---|---|---|
+| Rain | 1/2 | 3/4 | 2/3 | −0.585 | −0.2925 |
+| Dry | 1/2 | 1/4 | 2 | 1 | 0.5 |
+| **Total** | | | | | **0.2075 bits** |
+
+Both ways agree. Notice the first row is negative, but the total is positive.
+
+### Example 2: Swap the roles
+
+Now the truth is (3/4, 1/4) and the prediction is (1/2, 1/2). This is D_KL(Q ‖ P) from Example 1.
+
+| Outcome | Truth | Prediction | Truth / Prediction | log₂ | Truth × log₂ |
+|---|---|---|---|---|---|
+| Rain | 3/4 | 1/2 | 3/2 | 0.585 | 0.439 |
+| Dry | 1/4 | 1/2 | 1/2 | −1 | −0.25 |
+| **Total** | | | | | **0.189 bits** |
+
+| Truth | Prediction | Cost |
+|---|---|---|
+| (1/2, 1/2) | (3/4, 1/4) | 0.2075 bits |
+| (3/4, 1/4) | (1/2, 1/2) | 0.189 bits |
+
+Same two distributions, different costs. This is why KL divergence is called a *divergence*, not a distance.
 
 ## Try it yourself
 
-1. P = (1, 0) and Q = (1/2, 1/2). Compute D_KL(P ‖ Q).
-2. P = (1/2, 1/2) and Q = (1/2, 1/2). Compute D_KL(P ‖ Q).
-3. P = (1/4, 3/4) and Q = (1/2, 1/2). Compute D_KL(P ‖ Q).
+1. Truth P = (1, 0). Prediction Q = (1/2, 1/2). Compute D_KL(P ‖ Q).
+2. Truth P = (1/2, 1/2). Prediction Q = (1/2, 1/2). Compute D_KL(P ‖ Q).
+3. Truth P = (1/4, 3/4). Prediction Q = (1/2, 1/2). Compute D_KL(P ‖ Q). Then check it with Way 1, using the cross-entropy practice problem 1.
 
 <details>
 <summary>Answers</summary>
 
-1. Only the first outcome counts, because 0 × log(0/…) = 0: 1 × log₂(1 / (1/2)) = **1 bit**.
-2. The distributions match, so **0 bits**.
-3. (1/4) log₂((1/4)/(1/2)) + (3/4) log₂((3/4)/(1/2)) = −0.25 + 0.439 = **0.189 bits**.
+1. The second row has P = 0, so it counts as 0. The first row: 1 × log₂(1 / (1/2)) = 1 × log₂ 2 = **1 bit**.
+2. The prediction is perfect, so **0 bits**.
+3. (1/4) × log₂(1/2) + (3/4) × log₂(3/2) = −0.25 + 0.439 = **0.189 bits**. Check: H(P, Q) − H(P) = 1 − 0.811 = 0.189 ✓
 
 </details>
 
 ## Variations and common mistakes
 
-- **Not a distance.** It is asymmetric and does not satisfy the triangle inequality. Call it a *divergence*.
-- **Order matters.** Put the true distribution P first in D_KL(P ‖ Q).
-- **Zero in the wrong place.** If Q(x) = 0 but P(x) > 0, the KL divergence is infinite.
-- **Zero terms.** Treat 0 × log(0/…) as 0.
-- **Jensen–Shannon divergence** averages the KL divergences in both directions, which makes it symmetric.
+- **Calling it a distance.** It is not symmetric, so it is not a true distance. Always say which distribution is the truth.
+- **Putting the arguments in the wrong order.** In D_KL(P ‖ Q), P is the truth and goes first.
+- **Panicking at a negative row.** Single rows can be negative. Only the total must be ≥ 0. If your **total** is negative, you made a mistake.
+- **A zero in the wrong place.** Suppose the truth is (1/2, 1/2) and the prediction is (1, 0). The prediction says the second outcome is impossible, but it happens half the time. The KL divergence is infinite.
+- **Rows where P = 0.** Treat 0 × log(0 / …) as 0. An outcome that never happens costs nothing.
+- **Why machine learning minimizes cross-entropy.** Cross-entropy = H(P) + D_KL(P ‖ Q), and H(P) does not depend on the model. So making cross-entropy smaller is the same as making the KL divergence smaller.
 
 ## Remember this
 
-- KL divergence = extra bits you pay for using Q when the truth is P.
-- It is always ≥ 0, and equals 0 only when P = Q.
-- It is not symmetric.
+- KL divergence = the extra bits you pay for predicting Q when the truth is P.
+- KL divergence = cross-entropy − entropy.
+- It is ≥ 0, equal to 0 only for a perfect prediction, and the direction matters.
 
 ## Going further
 
-- **Cross-entropy** = entropy + KL divergence. See [Cross-Entropy](cross_entropy.md).
-- **Mutual information** can be written as a KL divergence between a joint distribution and the product of its marginals. See [Mutual Information](mutual_information.md).
-- **Variational autoencoders** use KL divergence to keep learned distributions close to a simple prior.
+- **Next:** [Bayesian Inference](bayesian_inference.md) shows how to update a prediction when new evidence arrives.
+- **Mutual information** is a KL divergence: it compares the real joint table with the table you would get if the variables were independent. See [Mutual Information](mutual_information.md).
+- **Variational autoencoders** use KL divergence to keep a learned distribution close to a simple one.
