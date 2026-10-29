@@ -176,7 +176,7 @@ Backpropagation only **calculates** the gradients. Gradient descent **uses** the
 
 ## 5. One complete training step, by hand
 
-> All calculations are shown step by step. Values are rounded to 3 decimals (4 where needed), and each step uses the rounded values shown.
+> All calculations are shown step by step. Values are rounded to 3 decimals (4 where needed), and each step uses the rounded values shown, so these numbers are **illustrative approximations** you can follow by hand. The numbers in Appendix A (gradient check) and Appendix B (training runs) are computed at full precision and are reproducible outputs.
 
 ### Starting point
 
@@ -394,7 +394,7 @@ Try answering before reading on.
 
 1. δz = p − y = 0.8 − 0 = **0.8**. It's positive, so a small increase in z would increase the loss: z should go **down**, making p smaller, closer to 0.
 2. ∂L/∂w₂₁ = δa₁ · x₂ = −0.196 · 0 = **0**. Its input x₂ was 0, so a small change in w₂₁ wouldn't affect this answer.
-3. ReLU's derivative would be 0, so δa₁ = −0.196 · 0 = 0, and ∂L/∂w₁₁ = 0 · x₁ = 0 · 1 = **0**.
+3. ReLU's derivative is 0 when a₁ = −0.2. So, whatever the value of ∂L/∂h₁, δa₁ = (∂L/∂h₁) · 0 = 0, and ∂L/∂w₁₁ = δa₁ · x₁ = 0 · 1 = **0**.
 4. Change = −η · gradient = −0.1 · 0.4 = **−0.04**: the parameter **decreases** by 0.04.
 
 ## 8. Going further
