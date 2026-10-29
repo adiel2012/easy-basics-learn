@@ -12,7 +12,8 @@ class Value:
         self.data = float(data)
         self.grad = 0.0
         self._backward = lambda: None
-        self._prev = set(_children)
+        # unique inputs, in a fixed order (a set's order can change between runs)
+        self._prev = tuple(dict.fromkeys(_children))
         self._op = _op
         # False means "frozen": an optimizer should skip updating this value.
         self.requires_grad = requires_grad
@@ -53,6 +54,8 @@ class Value:
         out = Value(self.data ** exponent, (self,), f"**{exponent}")
 
         def _backward():
+            if exponent == 0:  # x ** 0 is the constant 1, so its gradient is 0
+                return
             self.grad += exponent * (self.data ** (exponent - 1)) * out.grad
 
         out._backward = _backward
@@ -151,6 +154,19 @@ class Value:
         self.grad = 1.0
         for v in reversed(topo):
             v._backward()
+
+    def zero_grad(self):
+        # set .grad to 0 on this value and every value it was computed from
+        visited = set()
+
+        def clear(v):
+            if v not in visited:
+                visited.add(v)
+                v.grad = 0.0
+                for child in v._prev:
+                    clear(child)
+
+        clear(self)
 
 
 if __name__ == "__main__":
