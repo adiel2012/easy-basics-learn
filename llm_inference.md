@@ -405,6 +405,7 @@ The model continues the text after the assistant marker, one token at a time, un
 
 - **[Tokenization](tokenization.md)**: the first step (text → IDs) and the last (IDs → text).
 - **[Attention Blocks](attention_blocks.md)**: what happens inside each layer, including the causal mask.
+- **[Zero-Shot and Few-Shot Learning](zero_shot_few_shot_learning.md)**: how examples placed in the prompt change what the model predicts, with no weight changes.
 - **[Vision Transformer (ViT)](vit.md)**: the same transformer used on images. A standard image-classification ViT typically produces its class prediction in one forward pass, with no generation loop.
 
 ### Short glossary

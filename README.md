@@ -20,6 +20,19 @@ Each guide starts from zero and builds up one small step at a time. If something
 | Machine learning | [Attention Blocks](attention_blocks.md) | How each word in a sentence decides which other words to pay attention to |
 | Machine learning | [Attention Masks](attention_masks.md) | Which tokens each token is allowed to look at, and the different kinds of masks |
 | Machine learning | [LLM Inference](llm_inference.md) | How a language model writes its answer one token at a time |
+| Machine learning | [Zero-Shot and Few-Shot Learning](zero_shot_few_shot_learning.md) | How a language model can do a new task just from a description or a few examples in the prompt, without retraining |
+| Machine learning | [Chain-of-Thought Reasoning](chain_of_thought_reasoning.md) | Why a language model gets harder problems right when it writes out its steps before the answer |
+| Machine learning | [In-Context Learning](in_context_learning.md) | How a language model picks up a new task from the text in its prompt, without any training |
+| Machine learning | [RAG (Retrieval-Augmented Generation)](rag.md) | How a model looks up relevant documents first, then answers using them |
+| Machine learning | [Tool Use and Function Calling](tool_use.md) | How a model asks programs to fetch information or take actions, and uses the results |
+| Machine learning | [Agents](agents.md) | How a model reaches a goal by repeating think, act and observe in a loop |
+| Machine learning | [Multimodality](multimodality.md) | How one model handles text, images and audio by turning them all into vectors |
+| Machine learning | [Vector Databases](vector_databases.md) | How embeddings are stored and the most similar ones found quickly |
+| Machine learning | [Quantization](quantization.md) | How storing weights with fewer bits makes models smaller and faster |
+| Machine learning | [Distillation](distillation.md) | How a big teacher model trains a small student model to imitate it |
+| Machine learning | [LoRA (Low-Rank Adaptation)](lora.md) | How to fine-tune a big model cheaply by training only a small add-on |
+| Machine learning | [KV Cache](kv_cache.md) | How saving keys and values speeds up text generation, and what it costs in memory |
+| Machine learning | [Mixture of Experts](mixture_of_experts.md) | How a router sends each token to a few expert networks out of many |
 | Machine learning | [Vision Transformer (ViT)](vit.md) | How a transformer understands images by cutting them into patches and treating them like words |
 | Information theory | [Shannon Entropy](shannon_entropy.md) | How much surprise or uncertainty a random outcome carries, measured in bits |
 | Information theory | [Conditional Entropy](conditional_entropy.md) | The uncertainty left about one variable after you learn another |
