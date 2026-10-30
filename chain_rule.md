@@ -48,6 +48,7 @@ For how the chain rule is used in a full training step, see **[Backpropagation](
 | **Chain** | a sequence of steps where each output feeds the next step |
 | **Path** | one route from an input to the output through the steps |
 | **Partial derivative (∂)** | a derivative when there are several inputs: change one, keep the others fixed. Written ∂z/∂x instead of dz/dx |
+| **Gradient** | the vector of **all** the partial derivatives of a single-number (scalar) output, usually the loss, with respect to its inputs or parameters. Each partial derivative is one entry of the gradient |
 | **Computation graph** | a picture of all the steps and how values flow between them |
 
 ## 4. How it works
@@ -155,6 +156,15 @@ dz/dx = 2 + 4 = 6
 
 **Why add?** A small change in x changes **both** a and b. Each of those changes contributes to the change in z. To first order (that is, ignoring much smaller interaction terms that vanish as the nudge shrinks), these contributions add, which is why we add the path derivatives.
 
+You can see this directly. Nudge x from 1 to 1 + Δx in z = 2x² + 2x:
+
+```
+z(1 + Δx) = 2(1 + Δx)² + 2(1 + Δx) = 4 + 6·Δx + 2·(Δx)²
+Δz = 6·Δx + 2·(Δx)²
+```
+
+The 6·Δx part is the sum of the two path contributions (2 + 4). The 2·(Δx)² part is the interaction term: it comes from a and b **both** changing at once, and it shrinks much faster than Δx. As the nudge goes to zero, only the added path contributions remain.
+
 ### Rule 4: go backwards and reuse
 
 In a network, we want the derivative of the loss L with respect to **many** parameters. The trick is to start at L and walk **backwards**, reusing each result:
@@ -168,7 +178,7 @@ Step 3:  dL/da = dL/db · db/da          (reuse dL/db)
 Step 4:  dL/dx = dL/da · da/dx          (reuse dL/da)
 ```
 
-Each link reuses a gradient that's already computed and multiplies it by the local derivative: ∂L/∂x = ∂L/∂y · ∂y/∂x, when y depends on x through that single connection. When **one operation has several inputs** (like z = a·b), each input gets its own gradient, calculated separately. When **several paths lead back to the same variable** (Rule 3), their contributions are added. So backpropagation isn't always a single chain of multiplications: it multiplies along each link and adds where paths merge. Without reuse, you'd recompute the same long products over and over for every parameter. **This reuse is what makes backpropagation fast**: it's the chain rule, computed from the output backwards.
+Each link reuses a gradient that's already computed and multiplies it by the local derivative: ∂L/∂x = ∂L/∂y · ∂y/∂x, when y depends on x through that single connection. When **one operation has several inputs** (like z = a·b), each input gets its own gradient, calculated separately. When **several paths lead back to the same variable** (Rule 3), their contributions are added. This is called **gradient accumulation**. So backpropagation isn't always a single chain of multiplications: it multiplies along each link and adds where paths merge. Without reuse, you'd recompute the same long products over and over for every parameter. **This reuse is a major reason backpropagation is efficient**: it goes through the graph once, in reverse order, sharing intermediate results instead of re-evaluating long derivative chains. It's the chain rule, computed from the output backwards.
 
 ## 5. Try it yourself: the chain rule inside a neural network
 
@@ -189,10 +199,12 @@ Weights used: w₁₁ = 0.5, w₁₂ = 0.3, v₁ = 0.4, v₂ = −0.6
 ### The computation graph
 
 ```
- w₁₁ ──▶ a₁ ──ReLU──▶ h₁ ──(×v₁)──┐
-                                  ├──▶ z ──sigmoid──▶ p ──loss──▶ L
- w₁₂ ──▶ a₂ ──ReLU──▶ h₂ ──(×v₂)──┘
+ x, w₁₁ ──(sum)──▶ a₁ ──ReLU──▶ h₁ ──(×v₁)──┐
+                                             ├──(sum)──▶ z ──sigmoid──▶ p ──loss──▶ L
+ x, w₁₂ ──(sum)──▶ a₂ ──ReLU──▶ h₂ ──(×v₂)──┘
 ```
+
+Each **(sum)** is a weighted sum, for example a₁ = w₁₁x₁ + w₂₁x₂ + d₁. The weight w₁₁ is one term of that sum, not the whole of a₁, which is why ∂a₁/∂w₁₁ = x₁ (the value it is multiplied by).
 
 ### The local derivatives
 
@@ -228,6 +240,18 @@ Path: w₁₁ → a₁ → h₁ → z → p → L. Multiply all five local deriv
 ```
 
 **Notice the reuse (Rule 4).** Both examples start with ∂L/∂p · ∂p/∂z = −0.490. In the backpropagation guide this shared piece is called **δz**, and it's computed **once** and reused for every parameter. That's why the guide could write simply ∂L/∂v₁ = δz · h₁ and ∂L/∂w₁₁ = δz · v₁ · 1 · x₁.
+
+```
+δz = ∂L/∂z ≈ −0.490                         (computed once)
+
+∂L/∂v₁  = δz · h₁                ≈ −0.294
+∂L/∂h₁  = δz · v₁                ≈ −0.196
+∂L/∂w₁₁ = δz · v₁ · ReLU′(a₁) · x₁ ≈ −0.196
+```
+
+One shared gradient, many downstream calculations.
+
+**A useful shortcut.** For a sigmoid output with binary cross-entropy loss, the two factors always simplify to **δz = ∂L/∂z = p − y**. Here y = 1, so you can see it directly: δz = (−1/p) · p(1 − p) = −(1 − p) = p − 1 = 0.510 − 1 = −0.490, the same value. This is the familiar "prediction minus target" formula from the backpropagation guide, derived with the chain rule.
 
 ### Example 3: two paths, ∂L/∂x₁
 
@@ -294,6 +318,8 @@ print((loss(1 + eps) - loss(1)) / eps)            # ≈ -0.0098 (∂L/∂x1,  Ex
 
 This **forward-difference** estimate uses a small but finite change, so it's approximate. For a smooth function, it approaches the true derivative as the step size shrinks, until the computer's floating-point rounding becomes significant.
 
+**Optional improvement: central differences.** Nudging in both directions, (f(x + ε) − f(x − ε)) / (2ε), is usually more accurate for smooth functions, because the errors from the two sides largely cancel. Roughly, halving ε halves a forward difference's error but cuts a central difference's error to about a quarter. For example: `(loss(1 + eps) - loss(1 - eps)) / (2 * eps)`.
+
 ## 6. Common mistakes
 
 - **Forgetting a path.** If a value reaches the output in two ways, you must **add** both paths. Missing one gives a wrong gradient, like computing ∂L/∂x₁ = −0.098 instead of −0.0098 in Example 3.
@@ -314,7 +340,7 @@ This **forward-difference** estimate uses a small but finite change, so it's app
 1. y = 2x + 1 and z = y³. What is dz/dx at x = 1?
 2. 1 dollar = 0.9 euros and 1 euro = 160 yen, and both rates stay constant. If you have 0.01 more dollars, how many more yen do you get?
 3. z = a·b with a = x and b = x. Using Rule 3, what is dz/dx? Check with z = x².
-4. In Example 2, why does the factor ∂h₁/∂a₁ equal 1? What would ∂L/∂w₁₁ be if a₁ had been negative?
+4. In Example 2, why does the factor ∂h₁/∂a₁ equal 1? If a₁ had been negative (a₁ < 0), what would that factor be, and what would ∂L/∂w₁₁ be?
 
 Try answering before reading on.
 
@@ -325,7 +351,7 @@ Try answering before reading on.
 1. Forward: y = 2·1 + 1 = 3. Local: dy/dx = 2, dz/dy = 3y² = 3·3² = 27. Multiply: dz/dx = 27 · 2 = **54**.
 2. Chain: 0.01 · 0.9 · 160 = 0.01 · 144 = **1.44 more yen** (with constant rates).
 3. Path via a: ∂z/∂a · ∂a/∂x = b · 1 = x. Path via b: ∂z/∂b · ∂b/∂x = a · 1 = x. Add: **dz/dx = 2x**. Check: z = x², dz/dx = 2x. ✅
-4. Because a₁ = 0.6 > 0, and ReLU's derivative is 1 for positive inputs. If a₁ were negative, that factor would be 0, so the whole product, and ∂L/∂w₁₁, would be **0**.
+4. Because a₁ = 0.6 > 0, and ReLU's derivative is 1 for positive inputs. If a₁ were negative, that factor would be 0, so the whole product would be 0. Since w₁₁ reaches the loss **only** through h₁, ∂L/∂w₁₁ would be **0**. (Other parameters, like v₂ or w₁₂, would still get nonzero gradients through h₂.)
 
 ## 8. Going further
 
