@@ -198,7 +198,7 @@ The derivative `f'(z)` is the slope of the activation at `z`: how much the outpu
 
 | Function | Derivative | Largest value |
 |---|---|---|
-| ReLU | 1 if z > 0, else 0 | 1 |
+| ReLU | 1 if z > 0; 0 if z < 0; undefined at z = 0 (see `*` below) | 1 |
 | Sigmoid | σ(z)·(1 − σ(z)) | 0.25 (at z = 0) |
 | Tanh | 1 − tanh²(z) | 1 (at z = 0) |
 | GELU | Φ(z) + z·φ(z) | ≈ 1.13 (at z ≈ 1.41) |
@@ -541,7 +541,7 @@ def softplus(z):
 GELU(z) = z · Φ(z)
 ```
 
-where `Φ` is the cumulative distribution function of the standard normal distribution. Intuitively, the input is scaled by "the probability that a standard normal value is below it" — large positive inputs pass almost fully, large negative ones are nearly zeroed, and values near 0 are smoothly weighted.
+where `Φ` is the cumulative distribution function of the standard normal distribution. Intuitively, the input is scaled by "the probability that a standard normal value is below it" — large positive inputs pass almost fully, large negative ones are nearly zeroed, and values near 0 are smoothly weighted. This is a deterministic calculation; no random sampling takes place.
 
 **Widely used in BERT, GPT-2/GPT-3 and Vision Transformers.** Many newer LLMs (LLaMA, Mistral, PaLM) use SwiGLU instead (§10.2).
 
@@ -800,7 +800,7 @@ def swiglu_ffn(x, W_gate, W_up, W_down):
 Maxout(x) = max_k ( x·W_k + b_k )
 ```
 
-Each unit computes `k` linear functions and outputs the largest. It *learns* its own piecewise-linear activation shape (ReLU is the special case of `max(x·W, 0)`). Powerful but multiplies the parameter count by `k`, so it's rarely used today.
+Each unit computes `k` linear functions and outputs the largest. It *learns* its own piecewise-linear activation shape (ReLU is the special case `max(z, 0)`: one linear piece is the pre-activation `z`, the other is fixed at 0). Powerful but multiplies the parameter count by `k`, so it's rarely used today.
 
 ```python
 def maxout(x, Ws, bs):     # Ws: list of k weight matrices
