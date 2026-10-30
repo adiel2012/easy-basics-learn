@@ -1,6 +1,8 @@
 # Activation Functions: A Practical Guide
 
-MLP inference applies an activation function after almost every linear layer, but they're easy to treat as magic. This guide explains what each well-known activation does, why it exists, where it's used, and how to compute it correctly. Code examples use NumPy.
+Neural networks typically apply a non-linear **activation function** between their hidden linear layers; the final output layer often uses a different activation, or none at all, depending on the task. Activations are easy to treat as magic. This guide builds the intuition first (what an activation does, and how it affects gradients during training), then walks through every well-known activation: what it does, why it exists, where it's used, and how to compute it correctly.
+
+Code examples use NumPy. The exact GELU (§7.2) also needs SciPy for `erf`; everything else is NumPy-only. Unfamiliar terms are defined in the [Glossary](#glossary).
 
 ```python
 import numpy as np
@@ -11,16 +13,19 @@ import numpy as np
 ## Contents
 
 1. [Why activation functions exist](#1-why-activation-functions-exist)
-2. [The families at a glance](#2-the-families-at-a-glance)
-3. [Classic functions](#3-classic-functions): Identity, Step, Sigmoid, Tanh
-4. [The ReLU family](#4-the-relu-family): ReLU, Leaky ReLU, PReLU, RReLU, ReLU6, ELU, SELU, CELU
-5. [Smooth modern functions](#5-smooth-modern-functions): Softplus, GELU, Swish / SiLU, Mish
-6. [Hard (piecewise) approximations](#6-hard-piecewise-approximations): Hard Sigmoid, Hard Tanh, Hard Swish, Softsign
-7. [Output-layer functions](#7-output-layer-functions): Softmax, Log-Softmax, Sparsemax
-8. [Gated and learned activations](#8-gated-and-learned-activations): GLU, SwiGLU, GeGLU, Maxout
-9. [Putting it together: an MLP forward pass](#9-putting-it-together-an-mlp-forward-pass)
-10. [Comparison table](#10-comparison-table)
-11. [Choosing an activation](#11-choosing-an-activation)
+2. [Forward and backward passes](#2-forward-and-backward-passes)
+3. [Five fundamental functions](#3-five-fundamental-functions): ReLU, Sigmoid, Tanh, GELU, Softmax on one shared example
+4. [Derivatives and vanishing gradients](#4-derivatives-and-vanishing-gradients)
+5. [Classic functions](#5-classic-functions): Identity, Step, Sigmoid, Tanh
+6. [The ReLU family](#6-the-relu-family): ReLU, Leaky ReLU, PReLU, RReLU, ReLU6, ELU, SELU, CELU
+7. [Smooth modern functions](#7-smooth-modern-functions): Softplus, GELU, Swish / SiLU, Mish
+8. [Hard (piecewise) approximations](#8-hard-piecewise-approximations): Hard Sigmoid, Hard Tanh, Hard Swish, Softsign
+9. [Output-layer functions](#9-output-layer-functions): Softmax, Log-Softmax, Sparsemax
+10. [Gated and learned activations](#10-gated-and-learned-activations): GLU, SwiGLU, GeGLU, Maxout
+11. [Putting it together: an MLP forward pass](#11-putting-it-together-an-mlp-forward-pass)
+12. [Comparison tables](#12-comparison-tables)
+13. [Choosing an activation](#13-choosing-an-activation)
+- [Glossary](#glossary)
 
 ---
 
@@ -38,7 +43,7 @@ If you stack layers with nothing between them:
 W2·(W1·x + b1) + b2  =  (W2·W1)·x + (W2·b1 + b2)  =  W'·x + b'
 ```
 
-The whole stack collapses to **a single linear layer**. No matter how deep, the network could only separate data with straight lines (hyperplanes).
+The whole stack collapses to **a single linear (affine) layer**: however many linear layers you stack, their composition is still one affine transformation. A classifier built only from them can therefore draw only linear decision boundaries (hyperplanes), no matter how deep it is.
 
 An activation function `f` is applied after each linear step:
 
@@ -63,14 +68,83 @@ When comparing activations, these properties come up repeatedly:
 - **Zero-centered**: whether outputs average around 0. Zero-centered outputs tend to make optimization easier.
 - **Monotonic**: whether the function always increases. Modern smooth functions (GELU, Swish, Mish) are *not* monotonic — they dip slightly below 0 for small negative inputs.
 - **Smoothness**: whether the derivative is continuous. ReLU has a kink at 0; GELU and Swish are smooth everywhere.
-- **Saturation**: whether the gradient approaches 0 for large inputs. Saturating functions (sigmoid, tanh) cause **vanishing gradients** in deep networks.
+- **Saturation**: whether the gradient approaches 0 for large inputs. Saturating functions (sigmoid, tanh) cause **vanishing gradients** in deep networks (explained in §4).
 - **Cost**: element-wise comparisons are cheap; exponentials and `erf` are more expensive, which matters on mobile and embedded hardware.
 
 > **Inference vs. training.** Many of these trade-offs (vanishing gradients, dead neurons) affect *training*. At inference time the weights are fixed, and you simply apply whatever function the model was trained with. Using a different activation at inference than at training time will break the model.
 
 ---
 
-## 2. The families at a glance
+## 2. Forward and backward passes
+
+A network is used in two directions, and an activation plays a different role in each.
+
+**Forward pass (inference and training).** Data flows from input to output. At each layer, the activation transforms the value:
+
+```
+z = W·x + b      # linear step
+h = f(z)         # activation
+```
+
+**Backward pass (training only).** After the loss is computed, gradients flow from the output back toward the input so every weight learns which way to move (see [backpropagation.md](backpropagation.md) and [chain_rule.md](chain_rule.md)). Each activation passes the gradient along, multiplied by its **derivative** at the value it saw on the forward pass:
+
+```
+gradient into z  =  f'(z) × gradient arriving at h
+```
+
+The derivative acts like a valve on the gradient:
+
+| f'(z) | Effect on the gradient |
+|---|---|
+| ≈ 1 | Passes through unchanged |
+| between 0 and 1 | Shrinks |
+| exactly 0 | Blocked: nothing upstream learns from this example through this unit |
+
+This one idea explains most of the history of activation functions. Sigmoid and tanh fell out of favor for hidden layers because their derivatives are small (§4). ReLU took over because its derivative is exactly 1 for positive inputs. Most ReLU variants exist to fix its zero derivative for negative inputs.
+
+> **Inference only needs the forward pass.** If you're only running a trained model, derivatives never appear in your code, but they explain *why* the model was built with the activation it has.
+
+---
+
+## 3. Five fundamental functions
+
+There are dozens of activations, but most are variations on five ideas. Learn these first; everything later in the guide is a refinement.
+
+| Function | What it does | Main use |
+|---|---|---|
+| **ReLU** | Negative inputs become 0; positive inputs pass through unchanged | Default for hidden layers |
+| **Sigmoid** | Squashes any number into (0, 1) | Probabilities, gates |
+| **Tanh** | Squashes any number into (−1, 1), centered on 0 | RNNs, bounded outputs |
+| **GELU** | Like ReLU, but fades negative inputs out smoothly instead of cutting them off | Transformers |
+| **Softmax** | Turns a *vector* of scores into probabilities that sum to 1 | Multi-class outputs, attention |
+
+### Same input, five functions
+
+Feed the same five values through each:
+
+```python
+z = np.array([-2.0, -1.0, 0.0, 1.0, 2.0])
+```
+
+| z | −2 | −1 | 0 | 1 | 2 |
+|---|---|---|---|---|---|
+| `relu(z)` | 0 | 0 | 0 | 1 | 2 |
+| `sigmoid(z)` | 0.119 | 0.269 | 0.5 | 0.731 | 0.881 |
+| `tanh(z)` | −0.964 | −0.762 | 0 | 0.762 | 0.964 |
+| `gelu(z)` | −0.046 | −0.159 | 0 | 0.841 | 1.954 |
+| `softmax(z)` | 0.012 | 0.032 | 0.086 | 0.234 | 0.636 |
+
+What to notice:
+
+- **ReLU** throws away all negative information: −2 and −1 both become 0.
+- **Sigmoid** keeps the order but compresses everything into (0, 1). Zero maps to 0.5, so outputs are never negative.
+- **Tanh** has the same S-shape but is centered on 0, so negative inputs stay negative.
+- **GELU** is close to ReLU for positive values (2 → 1.954) but lets small negatives through as small negatives (−1 → −0.159) instead of zeroing them.
+- **Softmax** is the odd one out: each output depends on *all* inputs. It rescales the whole vector to sum to 1, and the largest input (2) takes most of the probability (0.636).
+
+The first four are **element-wise** (each output depends only on its own input); softmax is not.
+
+### Map of the families
 
 ```
 Classic ─────────── Identity, Step, Sigmoid, Tanh
@@ -91,11 +165,58 @@ Gated / learned ─── GLU, SwiGLU, GeGLU, Maxout
                        (used in modern LLM feed-forward blocks)
 ```
 
+Sections 5–10 cover each family in detail.
+
 ---
 
-## 3. Classic functions
+## 4. Derivatives and vanishing gradients
 
-### 3.1 Identity (Linear)
+The derivative `f'(z)` is the slope of the activation at `z`: how much the output changes when the input changes a little. From §2, it is also the factor that multiplies the gradient on its way back through the activation.
+
+### Derivatives of the fundamentals
+
+| Function | Derivative | Largest value |
+|---|---|---|
+| ReLU | 1 if z > 0, else 0 | 1 |
+| Sigmoid | σ(z)·(1 − σ(z)) | 0.25 (at z = 0) |
+| Tanh | 1 − tanh²(z) | 1 (at z = 0) |
+| GELU | Φ(z) + z·φ(z) | ≈ 1.13 (at z ≈ 1.41) |
+
+(Φ and φ are the standard normal CDF and density. Softmax has a matrix of derivatives, since every output depends on every input; it's normally handled together with the cross-entropy loss, see [cross_entropy.md](cross_entropy.md).)
+
+On the shared example from §3:
+
+| z | −2 | −1 | 0 | 1 | 2 |
+|---|---|---|---|---|---|
+| ReLU′ | 0 | 0 | 0* | 1 | 1 |
+| sigmoid′ | 0.105 | 0.197 | 0.25 | 0.197 | 0.105 |
+| tanh′ | 0.071 | 0.420 | 1 | 0.420 | 0.071 |
+| GELU′ | −0.085 | −0.083 | 0.5 | 1.083 | 1.085 |
+
+`*` ReLU has a kink at 0 and no true derivative there. Frameworks just pick a value (usually 0); it makes no practical difference.
+
+### Vanishing gradients
+
+A gradient travelling back through *n* layers is multiplied by one activation derivative per layer (along with the weights). If each factor is small, the product shrinks exponentially:
+
+```
+sigmoid, best case, 10 layers:   0.25^10  ≈ 0.00000095
+ReLU, active units, 10 layers:   1^10     = 1
+```
+
+Early layers then receive almost no gradient and barely learn. This is the **vanishing gradient problem**, and it's why sigmoid and tanh are avoided in deep hidden stacks. **Saturation** is the cause: where the curve flattens out (large |z|), the derivative is near 0 and the gradient is effectively blocked.
+
+ReLU's derivative is exactly 1 for every positive input, so gradients pass through active units undiminished. That is the main reason it replaced sigmoid and tanh.
+
+### Dying ReLU
+
+The flip side: ReLU's derivative is exactly 0 for negative inputs. If a unit's input is negative for every training example, it outputs 0, passes back zero gradient, and its weights never change again; the unit is **dead**. Leaky ReLU, ELU, GELU and similar functions keep a non-zero slope for negative inputs so this can't happen (§6, §7).
+
+---
+
+## 5. Classic functions
+
+### 5.1 Identity (Linear)
 
 ```
 f(z) = z
@@ -108,7 +229,7 @@ def identity(z):
     return z
 ```
 
-### 3.2 Binary Step (Heaviside)
+### 5.2 Binary Step (Heaviside)
 
 ```
 f(z) = 1 if z ≥ 0 else 0
@@ -118,10 +239,10 @@ The activation of the original perceptron (1958). Its derivative is 0 everywhere
 
 ```python
 def step(z):
-    return (z >= 0).astype(float)
+    return (np.asarray(z) >= 0).astype(float)
 ```
 
-### 3.3 Sigmoid (Logistic)
+### 5.3 Sigmoid (Logistic)
 
 ```
 sigmoid(z) = 1 / (1 + e^(-z))
@@ -164,7 +285,7 @@ def sigmoid(z):
     return out
 ```
 
-### 3.4 Tanh (Hyperbolic Tangent)
+### 5.4 Tanh (Hyperbolic Tangent)
 
 ```
 tanh(z) = (e^z - e^(-z)) / (e^z + e^(-z))  =  2·sigmoid(2z) - 1
@@ -187,9 +308,9 @@ def tanh(z):
 
 ---
 
-## 4. The ReLU family
+## 6. The ReLU family
 
-### 4.1 ReLU (Rectified Linear Unit)
+### 6.1 ReLU (Rectified Linear Unit)
 
 ```
 ReLU(z) = max(0, z)
@@ -223,7 +344,7 @@ def relu(z):
     return np.maximum(0, z)
 ```
 
-### 4.2 Leaky ReLU
+### 6.2 Leaky ReLU
 
 ```
 LeakyReLU(z) = z        if z > 0
@@ -237,7 +358,7 @@ def leaky_relu(z, alpha=0.01):
     return np.where(z > 0, z, alpha * z)
 ```
 
-### 4.3 PReLU (Parametric ReLU)
+### 6.3 PReLU (Parametric ReLU)
 
 Same formula as Leaky ReLU, but **α is learned** during training (one per channel, or one shared). At inference, α is just a stored weight.
 
@@ -246,7 +367,7 @@ def prelu(z, alpha):        # alpha loaded from the trained model
     return np.where(z > 0, z, alpha * z)
 ```
 
-### 4.4 RReLU (Randomized Leaky ReLU)
+### 6.4 RReLU (Randomized Leaky ReLU)
 
 During **training**, α is sampled randomly from a range (e.g. [1/8, 1/3]) for each element, acting as a regularizer. During **inference**, α is fixed to the average of that range:
 
@@ -258,7 +379,7 @@ def rrelu_inference(z, lower=1/8, upper=1/3):
 
 This is a good example of an activation that behaves *differently* at training and inference time.
 
-### 4.5 ReLU6
+### 6.5 ReLU6
 
 ```
 ReLU6(z) = min(max(0, z), 6)
@@ -271,7 +392,7 @@ def relu6(z):
     return np.clip(z, 0, 6)
 ```
 
-### 4.6 ELU (Exponential Linear Unit)
+### 6.6 ELU (Exponential Linear Unit)
 
 ```
 ELU(z) = z                  if z > 0
@@ -289,7 +410,7 @@ def elu(z, alpha=1.0):
 
 (`expm1` computes `e^z - 1` accurately for small z; `np.minimum(z, 0)` avoids overflow in the unused branch.)
 
-### 4.7 SELU (Scaled ELU)
+### 6.7 SELU (Scaled ELU)
 
 ```
 SELU(z) = λ · ELU(z, α)
@@ -298,7 +419,7 @@ SELU(z) = λ · ELU(z, α)
 α ≈ 1.67326
 ```
 
-These specific constants make the network **self-normalizing**: activations tend to stay at mean 0, variance 1 across layers, without batch normalization. This only holds under specific conditions (LeCun-normal weight initialization, plain fully-connected layers, "alpha dropout" instead of regular dropout). Designed specifically for **deep MLPs**.
+These constants are designed to make the network **self-normalizing**: the mean and variance of activations tend toward 0 and 1 across layers, without batch normalization. This is not guaranteed for arbitrary networks; it relies on specific conditions (LeCun-normal weight initialization, plain fully-connected layers, roughly standardized inputs, "alpha dropout" instead of regular dropout). Designed specifically for **deep MLPs**.
 
 ```python
 def selu(z):
@@ -306,7 +427,7 @@ def selu(z):
     return lam * np.where(z > 0, z, alpha * np.expm1(np.minimum(z, 0)))
 ```
 
-### 4.8 CELU (Continuously Differentiable ELU)
+### 6.8 CELU (Continuously Differentiable ELU)
 
 ```
 CELU(z) = max(0, z) + min(0, α·(e^(z/α) - 1))
@@ -321,7 +442,7 @@ def celu(z, alpha=1.0):
 
 ---
 
-## 5. Smooth modern functions
+## 7. Smooth modern functions
 
 These dominate **transformers** and recent CNNs. They look like ReLU for large inputs but are smooth around 0, and they let small negative values through.
 
@@ -334,20 +455,20 @@ These dominate **transformers** and recent CNNs. They look like ReLU for large i
                       (slight dip below zero)
 ```
 
-### 5.1 Softplus
+### 7.1 Softplus
 
 ```
 Softplus(z) = ln(1 + e^z)
 ```
 
-A smooth version of ReLU: always positive, approaches `z` for large z and 0 for very negative z. Its derivative is exactly the sigmoid. Commonly used when a network must output a **strictly positive value** (e.g. a variance or standard deviation), and as a building block for Mish.
+A smooth version of ReLU: always positive, approaches `z` for large z and 0 for very negative z. Its derivative is exactly the sigmoid. Commonly used when a network must output a **strictly positive value** (e.g. a variance or standard deviation), and as a building block for Mish. In floating point it can underflow to exactly 0 for very negative inputs (below about −745 in float64, −103 in float32), so code that divides by it or takes its log usually adds a small constant, e.g. `softplus(z) + 1e-6`.
 
 ```python
 def softplus(z):
     return np.logaddexp(0, z)     # = ln(e^0 + e^z), numerically stable
 ```
 
-### 5.2 GELU (Gaussian Error Linear Unit)
+### 7.2 GELU (Gaussian Error Linear Unit)
 
 ```
 GELU(z) = z · Φ(z)
@@ -355,7 +476,7 @@ GELU(z) = z · Φ(z)
 
 where `Φ` is the cumulative distribution function of the standard normal distribution. Intuitively, the input is scaled by "the probability that a standard normal value is below it" — large positive inputs pass almost fully, large negative ones are nearly zeroed, and values near 0 are smoothly weighted.
 
-**The default activation in BERT, the GPT family, and Vision Transformers.**
+**Widely used in BERT, GPT-2/GPT-3 and Vision Transformers.** Many newer LLMs (LLaMA, Mistral, PaLM) use SwiGLU instead (§10.2).
 
 Exact form uses the error function:
 
@@ -371,6 +492,8 @@ GELU(z) ≈ 0.5 · z · (1 + tanh( √(2/π) · (z + 0.044715 · z³) ))
 
 > Use the same variant the model was trained with — exact and tanh-approximated GELU give slightly different numbers.
 
+The exact version below needs **SciPy** for `erf` (`pip install scipy`); `gelu_tanh` uses NumPy only.
+
 ```python
 from math import sqrt, pi
 from scipy.special import erf
@@ -382,7 +505,7 @@ def gelu_tanh(z):
     return 0.5 * z * (1 + np.tanh(sqrt(2 / pi) * (z + 0.044715 * z**3)))
 ```
 
-### 5.3 Swish / SiLU (Sigmoid Linear Unit)
+### 7.3 Swish / SiLU (Sigmoid Linear Unit)
 
 ```
 Swish(z) = z · sigmoid(β·z)
@@ -402,7 +525,7 @@ def swish(z, beta=1.0):
     return z * sigmoid(beta * z)
 ```
 
-### 5.4 Mish
+### 7.4 Mish
 
 ```
 Mish(z) = z · tanh(Softplus(z)) = z · tanh(ln(1 + e^z))
@@ -417,11 +540,11 @@ def mish(z):
 
 ---
 
-## 6. Hard (piecewise) approximations
+## 8. Hard (piecewise) approximations
 
 Exponentials are relatively expensive on CPUs, mobile chips, and integer-only (quantized) hardware. These replace curves with straight-line segments that can be computed with just additions, multiplications and clipping.
 
-### 6.1 Hard Sigmoid
+### 8.1 Hard Sigmoid
 
 ```
 HardSigmoid(z) = ReLU6(z + 3) / 6  =  clip(z/6 + 0.5, 0, 1)
@@ -434,7 +557,7 @@ def hard_sigmoid(z):
     return np.clip(z / 6 + 0.5, 0, 1)
 ```
 
-### 6.2 Hard Tanh
+### 8.2 Hard Tanh
 
 ```
 HardTanh(z) = clip(z, -1, 1)
@@ -445,7 +568,7 @@ def hard_tanh(z):
     return np.clip(z, -1, 1)
 ```
 
-### 6.3 Hard Swish
+### 8.3 Hard Swish
 
 ```
 HardSwish(z) = z · ReLU6(z + 3) / 6  =  z · HardSigmoid(z)
@@ -458,7 +581,7 @@ def hard_swish(z):
     return z * hard_sigmoid(z)
 ```
 
-### 6.4 Softsign
+### 8.4 Softsign
 
 ```
 Softsign(z) = z / (1 + |z|)
@@ -473,9 +596,9 @@ def softsign(z):
 
 ---
 
-## 7. Output-layer functions
+## 9. Output-layer functions
 
-### 7.1 Softmax
+### 9.1 Softmax
 
 Turns a **vector** of raw scores (*logits*) into a probability distribution:
 
@@ -487,7 +610,7 @@ Unlike the functions above, softmax is **not element-wise**: each output depends
 
 - Every output is in (0, 1), and outputs **sum to 1**.
 - Order is preserved: the largest logit gets the largest probability.
-- Exponentiation exaggerates differences, so the top score tends to dominate.
+- Exponentiation turns *differences* between logits into *ratios* between probabilities: if two logits differ by `d`, their probabilities differ by a factor of `e^d`. Larger gaps therefore give more concentrated distributions. (In the example below, 0.659 / 0.242 ≈ e^1.)
 
 **Worked example** — logits for (cat, dog, bird):
 
@@ -525,7 +648,7 @@ pred = np.argmax(logits, axis=-1)
 
 **Relationship to sigmoid.** Softmax over two logits `[z, 0]` gives `sigmoid(z)` for the first class — sigmoid is the two-class special case.
 
-### 7.2 Log-Softmax
+### 9.2 Log-Softmax
 
 ```
 log_softmax(z)_i = z_i - log Σ_j e^(z_j)
@@ -539,9 +662,11 @@ def log_softmax(z, axis=-1):
     return z - np.log(np.sum(np.exp(z), axis=axis, keepdims=True))
 ```
 
-### 7.3 Sparsemax
+### 9.3 Sparsemax
 
 Like softmax, it outputs a probability distribution, but it can assign **exactly zero** to low-scoring classes. It works by projecting the logits onto the probability simplex. Useful when you want sparse, more interpretable attention or class selection.
+
+This implementation assumes a **1-D vector**; unlike `softmax` above, it doesn't take an `axis`. Batched inputs need the sort and cumulative sum done along the chosen axis.
 
 ```python
 def sparsemax(z):
@@ -562,9 +687,11 @@ sparsemax = [1.0,   0.0,   0.0]    # weaker classes cut to exactly 0
 
 ---
 
-## 8. Gated and learned activations
+## 10. Gated and learned activations
 
-### 8.1 GLU (Gated Linear Unit)
+> **These are architectures, not ordinary activation functions.** Every function in §5–§9 takes a value (or, for softmax, one vector) and transforms it, with no weights of its own. GLU and its variants instead take the layer *input*, compute **two separate linear projections** with their own weight matrices, apply an ordinary activation to one, and multiply the two together. The activation inside (sigmoid, GELU, SiLU) is one you've already met; the gating is the new part. Maxout likewise carries its own weights.
+
+### 10.1 GLU (Gated Linear Unit)
 
 Instead of applying a fixed function to one projection, GLU computes **two** projections of the input and uses one to gate the other:
 
@@ -574,7 +701,7 @@ GLU(x) = (x·W + b) ⊙ sigmoid(x·V + c)
 
 `⊙` is element-wise multiplication. The sigmoid branch decides, per element, how much of the linear branch to let through.
 
-### 8.2 GLU variants: SwiGLU, GeGLU, ReGLU
+### 10.2 GLU variants: SwiGLU, GeGLU, ReGLU
 
 Swap the sigmoid gate for another activation:
 
@@ -596,7 +723,7 @@ def swiglu_ffn(x, W_gate, W_up, W_down):
 
 Gated blocks have three weight matrices instead of two, so the hidden size is usually reduced (often to about 2/3) to keep the parameter count comparable.
 
-### 8.3 Maxout
+### 10.3 Maxout
 
 ```
 Maxout(x) = max_k ( x·W_k + b_k )
@@ -611,7 +738,7 @@ def maxout(x, Ws, bs):     # Ws: list of k weight matrices
 
 ---
 
-## 9. Putting it together: an MLP forward pass
+## 11. Putting it together: an MLP forward pass
 
 A 3-layer MLP classifying into 10 classes (e.g. MNIST digits), with the hidden activation swappable:
 
@@ -621,7 +748,7 @@ ACTIVATIONS = {
     "leaky_relu": leaky_relu,
     "elu": elu,
     "selu": selu,
-    "gelu": gelu,
+    "gelu": gelu,              # exact GELU needs SciPy; swap in gelu_tanh for NumPy-only
     "silu": silu,
     "mish": mish,
     "tanh": tanh,
@@ -670,36 +797,61 @@ The **final linear layer has no hidden activation**. Logits must be allowed to b
 
 ---
 
-## 10. Comparison table
+## 12. Comparison tables
+
+### Basic activations
 
 | Function | Formula | Range | Zero-centered | Smooth | Saturates | Cost | Typical use |
 |---|---|---|---|---|---|---|---|
-| Identity | `z` | (-∞, ∞) | yes | yes | no | lowest | Regression output |
+| Identity | `z` | (−∞, ∞) | yes | yes | no | lowest | Regression output |
 | Step | `1 if z≥0 else 0` | {0, 1} | no | no | — | lowest | Historical |
 | Sigmoid | `1/(1+e^-z)` | (0, 1) | no | yes | both sides | exp | Binary output, gates |
-| Tanh | `tanh(z)` | (-1, 1) | yes | yes | both sides | exp | RNNs, bounded output |
+| Tanh | `tanh(z)` | (−1, 1) | yes | yes | both sides | exp | RNNs, bounded output |
+
+### ReLU family
+
+| Function | Formula | Range | Zero-centered | Smooth | Saturates | Cost | Typical use |
+|---|---|---|---|---|---|---|---|
 | ReLU | `max(0,z)` | [0, ∞) | no | no | negative side | lowest | Default hidden layer |
-| Leaky ReLU | `z or αz` | (-∞, ∞) | ~ | no | no | lowest | Avoid dead neurons, GANs |
-| PReLU | `z or αz`, α learned | (-∞, ∞) | ~ | no | no | lowest | CNNs |
+| Leaky ReLU | `z or αz` | (−∞, ∞) | ~ | no | no | lowest | Avoid dead neurons, GANs |
+| PReLU | `z or αz`, α learned | (−∞, ∞) | ~ | no | no | lowest | CNNs |
+| RReLU | `z or αz`, α random in training, fixed at inference | (−∞, ∞) | ~ | no | no | lowest | Regularization |
 | ReLU6 | `clip(z,0,6)` | [0, 6] | no | no | both sides | lowest | Mobile / quantized |
 | ELU | `z or α(e^z−1)` | (−α, ∞) | ~ | yes (α=1) | negative side | exp | Deep nets |
 | SELU | `λ·ELU(z)` | (−λα, ∞) | yes* | no | negative side | exp | Self-normalizing MLPs |
+| CELU | `max(0,z)+min(0,α(e^(z/α)−1))` | (−α, ∞) | ~ | yes | negative side | exp | ELU with any α |
+
+### Modern smooth and hard activations
+
+| Function | Formula | Range | Zero-centered | Smooth | Saturates | Cost | Typical use |
+|---|---|---|---|---|---|---|---|
 | Softplus | `ln(1+e^z)` | (0, ∞) | no | yes | negative side | exp + log | Positive outputs |
 | GELU | `z·Φ(z)` | ≈(−0.17, ∞) | ~ | yes | negative side | erf / tanh | Transformers |
 | SiLU / Swish | `z·σ(z)` | ≈(−0.28, ∞) | ~ | yes | negative side | exp | CNNs, LLMs (SwiGLU) |
 | Mish | `z·tanh(softplus z)` | ≈(−0.31, ∞) | ~ | yes | negative side | highest | Some detection models |
 | Hard Sigmoid | `clip(z/6+0.5,0,1)` | [0, 1] | no | no | both sides | lowest | Mobile |
+| Hard Tanh | `clip(z,−1,1)` | [−1, 1] | yes | no | both sides | lowest | Mobile, bounded output |
 | Hard Swish | `z·HardSigmoid(z)` | ≈[−0.375, ∞) | ~ | no | negative side | lowest | MobileNetV3 |
-| Softsign | `z/(1+|z|)` | (-1, 1) | yes | yes | both (slowly) | low | Rare |
+| Softsign | `z/(1+\|z\|)` | (−1, 1) | yes | yes | both (slowly) | low | Rare |
+
+### Output and gated functions
+
+| Function | Formula | Range | Zero-centered | Smooth | Saturates | Cost | Typical use |
+|---|---|---|---|---|---|---|---|
 | Softmax | `e^zi / Σe^zj` | (0, 1), sums to 1 | — | yes | — | exp + sum | Multi-class output |
+| Log-Softmax | `zi − log Σe^zj` | (−∞, 0) | — | yes | — | exp + log | Log-probabilities, NLL loss |
 | Sparsemax | simplex projection | [0, 1], sums to 1 | — | no | — | sort | Sparse attention / output |
+| GLU | `(xW+b) ⊙ σ(xV+c)` | (−∞, ∞) | — | yes | — | 2 projections + exp | Gated CNNs |
+| SwiGLU | `SiLU(xW) ⊙ (xV)` | (−∞, ∞) | — | yes | — | 2 projections + exp | LLM feed-forward blocks |
+| Maxout | `max_k(xW_k+b_k)` | (−∞, ∞) | — | no | no | k projections | Rare today |
 
 `~` = approximately zero-centered (outputs can be negative, but the mean isn't guaranteed to be 0).
-`*` = under the self-normalizing conditions described in §4.7.
+`*` = under the self-normalizing conditions described in §6.7.
+Gated and Maxout rows take the layer input `x`, not a single pre-activation `z` (see §10).
 
 ---
 
-## 11. Choosing an activation
+## 13. Choosing an activation
 
 **Hidden layers**
 
@@ -722,3 +874,20 @@ The **final linear layer has no hidden activation**. Logits must be allowed to b
 - **Value in [-1, 1]:** Tanh.
 
 **At inference time, above all:** use exactly the activation (and exact variant, e.g. GELU vs. tanh-approximated GELU) the model was trained with.
+
+---
+
+## Glossary
+
+- **Affine transformation**: a linear transformation plus a bias, `W·x + b`. What every "linear" layer actually computes.
+- **Derivative**: the slope of a function at a point; for an activation, the factor that scales the gradient passing back through it (§2, §4).
+- **Element-wise**: applied to each number independently, so output *i* depends only on input *i*. Most activations are element-wise; softmax and sparsemax are not.
+- **Gating**: multiplying one signal by a value computed from another signal (often in 0–1), so one branch controls how much of the other passes through (§10).
+- **Logits**: the raw, unnormalized scores from the final linear layer, before sigmoid or softmax. They can be any real number.
+- **Monotonic / non-monotonic**: a monotonic function never decreases as its input increases. GELU, Swish and Mish are non-monotonic: they dip slightly below 0 for small negative inputs.
+- **Quantization**: running a model with low-precision numbers (e.g. 8-bit integers) instead of 32-bit floats, to save memory and compute. See [quantization.md](quantization.md).
+- **Saturation**: the flat region of a curve, where large changes in input barely change the output, so the derivative is near 0.
+- **Smooth**: having a continuous derivative, with no kinks. ReLU has a kink at 0; GELU does not.
+- **Temperature**: a divisor applied to logits before softmax; below 1 sharpens the distribution, above 1 flattens it (§9.1).
+- **Vanishing gradients**: gradients shrinking toward 0 as they're multiplied back through many layers, so early layers stop learning (§4).
+- **Zero-centered**: outputs that average around 0, rather than always being positive. Tends to make optimization easier.
