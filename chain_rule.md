@@ -116,7 +116,7 @@ Sometimes an input reaches the output by **two or more routes**. Then you comput
 
 ```
         ┌──▶ a ──┐
-x ──────┤        ├──▶ z
+x ──────┤        ├──▶ z = f(a, b)
         └──▶ b ──┘
 
 ∂z/∂x = ∂z/∂a · ∂a/∂x  +  ∂z/∂b · ∂b/∂x
@@ -318,7 +318,7 @@ print((loss(1 + eps) - loss(1)) / eps)            # ≈ -0.0098 (∂L/∂x1,  Ex
 
 This **forward-difference** estimate uses a small but finite change, so it's approximate. For a smooth function, it approaches the true derivative as the step size shrinks, until the computer's floating-point rounding becomes significant.
 
-**Optional improvement: central differences.** Nudging in both directions, (f(x + ε) − f(x − ε)) / (2ε), is usually more accurate for smooth functions, because the errors from the two sides largely cancel. Roughly, halving ε halves a forward difference's error but cuts a central difference's error to about a quarter. For example: `(loss(1 + eps) - loss(1 - eps)) / (2 * eps)`.
+**Optional improvement: central differences.** Nudging in both directions, (f(x + ε) − f(x − ε)) / (2ε), is usually more accurate for smooth functions, because the errors from the two sides largely cancel. Roughly, halving ε halves a forward difference's error but cuts a central difference's error to about a quarter. (For smooth functions, the error is about proportional to ε for forward differences and to ε² for central differences, ignoring floating-point rounding.) For example: `(loss(1 + eps) - loss(1 - eps)) / (2 * eps)`.
 
 ## 6. Common mistakes
 
@@ -355,7 +355,7 @@ Try answering before reading on.
 
 ## 8. Going further
 
-- **[Backpropagation](backpropagation.md)**: the chain rule used to compute all 9 gradients and update the weights in one full training step.
+- **Next: [Backpropagation](backpropagation.md)**: shows how these chain-rule calculations are combined to train a complete network, computing all 9 gradients and updating the weights in one full training step.
 - **[MLP Inference: XOR](mlp_xor_inference.md)**: the forward pass that provides the values the chain rule needs.
 
 ### Learn more

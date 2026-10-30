@@ -23,7 +23,7 @@ forward  →  loss  →  backward  →  update  →  (repeat)
 
 - **[MLP Inference: XOR](mlp_xor_inference.md)**: how the forward pass works. This guide uses the same network shape and the same symbols.
 - **Basic derivatives**: a derivative tells you how much an output changes when an input changes a little. Section 4 lists the few rules you need.
-- **[The Chain Rule](chain_rule.md)** (optional): a focused guide to the one math rule backpropagation is built on.
+- **[The Chain Rule](chain_rule.md)** (optional): a focused guide to the one math rule backpropagation is built on. If you already understand why derivatives **multiply along a chain** and **add across paths**, you already have the central idea of this guide.
 
 ## 3. The key terms
 
@@ -199,11 +199,11 @@ Backpropagation only **calculates** the gradients. Gradient descent **uses** the
 
 **Starting weights** (as if chosen at random):
 
-| Parameter | Value | | Parameter | Value | | Parameter | Value |
-|---|---|---|---|---|---|---|---|
-| w₁₁ | 0.5 | | w₁₂ | 0.3 | | v₁ | 0.4 |
-| w₂₁ | −0.4 | | w₂₂ | 0.4 | | v₂ | −0.6 |
-| d₁ | 0.1 | | d₂ | 0.2 | | c | 0.1 |
+| Parameter | Value | Parameter | Value | Parameter | Value |
+|---|---:|---|---:|---|---:|
+| w₁₁ | 0.5 | w₁₂ | 0.3 | v₁ | 0.4 |
+| w₂₁ | −0.4 | w₂₂ | 0.4 | v₂ | −0.6 |
+| d₁ | 0.1 | d₂ | 0.2 | c | 0.1 |
 
 The same network with these starting values on its lines:
 
@@ -282,7 +282,7 @@ L = −ln(p)
    = −0.490
 ```
 
-δz is negative: a small increase in z would lower the loss. That makes sense, because we want p (and so z) to go up. (Appendix A checks this value the long way, with the chain rule.)
+δz is negative: a small increase in z would lower the loss. That makes sense, because we want p (and so z) to go up. Remember that z is the logit, the value **before** the sigmoid, and p is the probability **after** it. The sigmoid is increasing, so raising z always raises p. (Appendix A checks this value the long way, with the chain rule.)
 
 **Output layer gradients**
 
@@ -405,7 +405,7 @@ L            = −ln(0.664)     ≈ 0.409
 
 The prediction moved toward the correct answer (1), and the loss dropped. **That's learning.**
 
-With a suitable learning rate, an update should reduce the loss locally, as it did here. It's not guaranteed: with a learning rate that's too large, the loss can sometimes go up. That's why the loss is monitored during training.
+For a sufficiently small learning rate, a gradient-descent step decreases the loss whenever the gradient isn't zero, as it did here. A larger step has no such guarantee: with a learning rate that's too large, the loss can go up. That's why the loss is monitored during training.
 
 This step updated the parameters using **one example's** gradients. To learn all of XOR, [Appendix B](#appendix-b-training-on-all-of-xor) instead **averages** the gradients from all four examples before making each update, and repeats this many times.
 
@@ -562,11 +562,20 @@ train(0.2, -0.1)
 
 Predictions are rounded to three decimals; 1.000 and 0.000 are not exact probabilities (sigmoid never reaches exactly 0 or 1).
 
-The targets are 0, 1, 1, 0, and after training all four answers are right. The final weights differ from the hand-picked ones in the inference guide, but they solve XOR just as well: there are many good solutions.
+The targets are 0, 1, 1, 0. After training, all four predictions are on the correct side of the 0.5 classification threshold (and very close to their targets). The final weights differ from the hand-picked ones in the inference guide, but they solve XOR just as well: there are many good solutions.
 
 ### Starting weights matter
 
-**Run 2** changes only w₂₁ and w₂₂, to 0.2 and −0.1. In this run, learning stalls: the average loss stays at 0.693 from epoch 100 to 5000, and training converges to a constant prediction of 0.5 for every example (by epoch 500, all four print as 0.5 at 3 decimals). A loss of 0.693 = ln 2 is exactly what predicting 0.5 for everything gives.
+**Run 2** changes only w₂₁ and w₂₂, to 0.2 and −0.1. The same script prints:
+
+| Epoch | Average loss | p for (0,0) | p for (0,1) | p for (1,0) | p for (1,1) |
+|---|---|---|---|---|---|
+| 0 | 0.695 | 0.505 | 0.540 | 0.510 | 0.545 |
+| 100 | 0.693 | 0.496 | 0.503 | 0.496 | 0.503 |
+| 500 | 0.693 | 0.500 | 0.500 | 0.500 | 0.500 |
+| 5000 | 0.693 | 0.500 | 0.500 | 0.500 | 0.500 |
+
+Learning stalls: the average loss stays at 0.693 from epoch 100 to 5000, and training converges to a constant prediction of 0.5 for every example. A loss of 0.693 = ln 2 is exactly what predicting 0.5 for everything gives.
 
 This is a particular outcome of this initialization and training setup (the starting weights, the learning rate, averaging the gradients), not typical training behavior. The general lesson is that **some starting points lead to slow learning or stuck neurons**, especially in a network this small. Common remedies: different random starting weights, more hidden neurons, or a different learning rate.
 
@@ -579,6 +588,13 @@ If a hidden value before ReLU is **negative**, ReLU's derivative is 0, and **no 
 ```
 
 A negative pre-activation makes ReLU's derivative zero, which blocks the gradient for that step. Then w₁₂, w₂₂ and d₂ would all get zero gradient in that step. If a neuron's pre-activation aⱼ stays negative for **every** training example, ReLU blocks the gradient for that neuron, so its incoming weights and bias stop learning through this path. This is called a **dead ReLU**.
+
+Compare the two ways a weight can get a zero gradient:
+
+| Cause | Example | Does it last? |
+|---|---|---|
+| The weight's **input is 0** | w₂₁ in Section 5, because x₂ = 0 | No: any example with x₂ ≠ 0 gives it a gradient |
+| ReLU **blocks the error** (aⱼ < 0) | w₁₂, w₂₂ and d₂ if a₂ were −0.3 | It can: if aⱼ < 0 for every example, the neuron is dead and stays that way |
 
 ### Choosing the learning rate
 
