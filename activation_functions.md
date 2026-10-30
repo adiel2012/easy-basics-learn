@@ -65,7 +65,7 @@ Activations play two different roles in an MLP:
 When comparing activations, these properties come up repeatedly:
 
 - **Range**: bounded (e.g. sigmoid, 0–1) or unbounded (e.g. ReLU, 0–∞).
-- **Zero-centered**: whether the function produces values on both sides of 0, balanced around the origin (tanh is; sigmoid isn't). This describes the function's shape; the actual mean of its outputs still depends on the inputs it receives. Zero-centered activations tend to make optimization easier.
+- **Zero-centered**: whether the function's output range extends to both sides of 0 and is symmetric around 0 (tanh is; sigmoid and Leaky ReLU aren't). In this guide it describes the function's shape, not the actual mean of its outputs, which depends on the input distribution. (The term is also sometimes used for that statistical mean.) Zero-centered activations tend to make optimization easier.
 - **Monotonic**: whether the function never decreases as its input increases (ReLU counts, even though it's flat for negative inputs). Modern smooth functions (GELU, Swish, Mish) are *not* monotonic — they dip slightly below 0 for small negative inputs.
 - **Smoothness**: whether the derivative is continuous. ReLU has a kink at 0; GELU and Swish are smooth everywhere.
 - **Saturation**: whether the gradient approaches 0 for large inputs. Saturating functions (sigmoid, tanh) cause **vanishing gradients** in deep networks (explained in §4).
@@ -100,7 +100,7 @@ The derivative acts like a valve on the gradient:
 | between 0 and 1 | Shrinks |
 | exactly 0 | Blocked: nothing upstream learns from this example through this unit |
 
-This one idea explains most of the history of activation functions. Sigmoid and tanh fell out of favor for hidden layers because their derivatives are small (§4). ReLU took over because its derivative is exactly 1 for positive inputs. Most ReLU variants exist to fix its zero derivative for negative inputs.
+This one idea explains most of the history of activation functions. Sigmoid and tanh fell out of favor for hidden layers because their derivatives are small (§4). ReLU took over because its derivative is exactly 1 for positive inputs. Several ReLU variants address its zero derivative for negative inputs; others add bounded outputs, smoother negative regions or different training properties.
 
 > **Inference only needs the forward pass.** If you're only running a trained model, derivatives never appear in your code, but they explain *why* the model was built with the activation it has.
 
@@ -173,9 +173,9 @@ ReLU family ─────── ReLU → Leaky ReLU, PReLU, RReLU, ReLU6
                        → ELU, SELU, CELU   (smooth negative side)
 
 Smooth modern ───── Softplus, GELU, Swish/SiLU, Mish
-                       (default in transformers and modern CNNs)
+                       (common in transformers and some modern CNN architectures)
 
-Cheap approximations ─ Hard Sigmoid, Hard Tanh, Hard Swish, Softsign
+Cheap functions & approximations ─ Hard Sigmoid, Hard Tanh, Hard Swish, Softsign
                        (cheap versions for mobile / quantized models)
 
 Output ──────────── Softmax, Log-Softmax, Sparsemax
@@ -231,7 +231,7 @@ ReLU, active units, 10 layers:   1^10     = 1
 
 Early layers then receive almost no gradient and barely learn. This is the **vanishing gradient problem**, and it's why sigmoid and tanh are avoided in deep hidden stacks. **Saturation** is the cause: where the curve flattens out (large |z|), the derivative is near 0 and the gradient is effectively blocked.
 
-ReLU's derivative is exactly 1 for every positive input, so gradients pass through active units undiminished. That is the main reason it replaced sigmoid and tanh.
+ReLU's derivative is exactly 1 for every positive input, so active units don't scale the gradient at all. A derivative of 1 means the activation doesn't shrink the gradient; it doesn't guarantee the gradient survives the whole layer (see the weight matrix below). That is the main reason it replaced sigmoid and tanh.
 
 This doesn't make deep ReLU networks immune, though. The backward pass also multiplies by each layer's **weight matrix**, and weights that are too small or too large can still make gradients vanish or explode. ReLU only removes the activation's own contribution to the shrinking, which is why the activation and the weight initialization are chosen together (see below).
 
@@ -265,7 +265,7 @@ Raising one logit raises its own probability and lowers all the others, which is
 
 How weights are initialized decides whether activations and gradients keep a sensible scale as they pass through many layers, and the right scale depends on the activation:
 
-| Activation | Usual initialization | Weight variance |
+| Activation | Usual initialization | Typical weight variance (normal initialization) |
 |---|---|---|
 | ReLU and its variants | He (Kaiming) | 2 / fan_in |
 | SELU | LeCun normal | 1 / fan_in |
@@ -296,7 +296,7 @@ def identity(z):
 f(z) = 1 if z ≥ 0 else 0
 ```
 
-The activation of the original perceptron (1958). Its derivative is 0 everywhere (and undefined at 0), so it **cannot be trained with gradient descent**. Today it's of historical and teaching interest only.
+The activation of the original perceptron (1958). Its derivative is 0 wherever it is defined (it's undefined at 0), so it **cannot be trained directly with ordinary gradient descent**. Today it's of historical and teaching interest only.
 
 ```python
 def step(z):
@@ -396,9 +396,9 @@ ReLU(z) = [ 0.0,  0.0, 0.0, 1.5, 3.0]
 - **Cheap**: one comparison, no exponentials.
 - **Non-saturating** for positive inputs: slope is exactly 1, so the activation itself doesn't shrink gradients through many layers (the weights still can; see §4).
 - **Sparse**: many neurons output exactly 0. That reduces how much non-zero information flows forward, and systems built for sparse computation can exploit it; ordinary dense hardware (CPUs, GPUs) doesn't run faster just because some values are zero.
-- Despite its simplicity, combinations of ReLUs can approximate any continuous function piecewise-linearly.
+- Despite its simplicity, a sufficiently wide or deep network of ReLUs can approximate any continuous function on a bounded (compact) domain, using piecewise-linear pieces.
 
-**Weakness — "dying ReLU"**: if a neuron's input becomes negative for every example, it outputs 0, its gradient is 0, and it never recovers during training. Most of the variants below exist to fix this.
+**Weakness — "dying ReLU"**: if a neuron's input becomes negative for every example, it outputs 0, its gradient is 0, and it never recovers during training. Several of the variants below address this (Leaky ReLU, PReLU, RReLU, ELU); others serve different goals, such as bounded outputs (ReLU6) or self-normalization (SELU).
 
 ```python
 def relu(z):
@@ -412,7 +412,7 @@ LeakyReLU(z) = z        if z > 0
              = α·z      otherwise      (α typically 0.01)
 ```
 
-A small slope on the negative side keeps gradients alive, so neurons can't fully die. Common in GANs (often with α = 0.2).
+A small, non-zero slope on the negative side lets gradients keep flowing even for negative inputs, reducing the risk of permanently inactive neurons. Common in GANs (often with α = 0.2).
 
 ```python
 def leaky_relu(z, alpha=0.01):
@@ -496,7 +496,7 @@ def selu(z):
 CELU(z) = max(0, z) + min(0, α·(e^(z/α) - 1))
 ```
 
-A reformulation of ELU whose derivative is continuous for every α (ELU's is only continuous when α = 1). Identical to ELU when α = 1.
+A reformulation of ELU (requires α > 0) whose derivative is continuous for every such α (ELU's is only continuous when α = 1). Identical to ELU when α = 1.
 
 ```python
 def celu(z, alpha=1.0):
@@ -520,7 +520,7 @@ GELU and SiLU (and the related Mish) are common in **transformers** and recent C
 
 ![ReLU, GELU and SiLU compared between z = −3 and 3](images/relu_gelu_silu.png)
 
-Far from 0 the three are nearly identical. Near 0 they differ: GELU and SiLU bend smoothly, dip slightly below 0 (to about −0.17 and −0.28) and let small negative values through, while ReLU cuts off sharply. Those differences change what a trained model has learned, so they are not interchangeable with ReLU, or with each other, at inference time.
+Far from 0 the three are nearly identical. Near 0 they differ: GELU and SiLU bend smoothly, dip slightly below 0 (GELU to about −0.17 near z = −0.75, SiLU to about −0.28 near z = −1.28) and let small negative values through, while ReLU cuts off sharply. Those differences change what a trained model has learned, so they are not interchangeable with ReLU, or with each other, at inference time.
 
 ### 7.1 Softplus
 
@@ -641,7 +641,7 @@ def hard_tanh(z):
 HardSwish(z) = z · ReLU6(z + 3) / 6  =  z · HardSigmoid(z)
 ```
 
-Introduced in **MobileNetV3** as a cheap stand-in for Swish with nearly the same accuracy.
+Introduced in **MobileNetV3** as a hardware-friendly approximation to Swish, designed to keep much of its practical performance at lower computational cost.
 
 ```python
 def hard_swish(z):
@@ -654,7 +654,7 @@ def hard_swish(z):
 Softsign(z) = z / (1 + |z|)
 ```
 
-Unlike the hard functions above, Softsign is smooth, not piecewise-linear: a tanh-like curve in (-1, 1) without exponentials. It approaches its limits polynomially (more slowly than tanh), so it saturates more gently. Rarely used today but appears in some older models.
+Unlike the hard functions above, Softsign is continuously differentiable (smooth in this guide's sense), not piecewise-linear; its second derivative does jump at 0. It is a tanh-like curve in (-1, 1) without exponentials. It approaches its limits polynomially (more slowly than tanh), so it saturates more gently. Rarely used today but appears in some older models.
 
 ```python
 def softsign(z):
@@ -675,7 +675,7 @@ softmax(z)_i = e^(z_i) / Σ_j e^(z_j)
 
 Unlike the functions above, softmax is **not element-wise**: each output depends on every input.
 
-- Every output is in (0, 1), and outputs **sum to 1**.
+- Every output is in (0, 1) (given at least two logits; a single logit always gets exactly 1), and outputs **sum to 1**.
 - Order is preserved: the largest logit gets the largest probability.
 - Exponentiation turns *differences* between logits into *ratios* between probabilities: if two logits differ by `d`, their probabilities differ by a factor of `e^d`. Larger gaps therefore give more concentrated distributions. (In the example below, 0.659 / 0.242 ≈ e^1.)
 
@@ -714,7 +714,7 @@ def softmax_t(z, T=1.0):
 pred = np.argmax(logits, axis=-1)
 ```
 
-**Relationship to sigmoid.** Softmax over two logits `[z, 0]` gives `sigmoid(z)` for the first class — sigmoid is the two-class special case.
+**Relationship to sigmoid.** Softmax over two logits `[z, 0]` gives `sigmoid(z)` for the first class. More generally, for two logits `[z₁, z₂]` the first probability is `sigmoid(z₁ − z₂)`. So binary sigmoid classification is two-class softmax with one logit fixed at 0. (This is not the same as applying sigmoid separately to each of two logits.)
 
 ### 9.2 Log-Softmax
 
@@ -735,7 +735,7 @@ def log_softmax(z, axis=-1):
 
 Like softmax, it outputs a probability distribution, but it can assign **exactly zero** to low-scoring classes. It works by projecting the logits onto the probability simplex. Useful when you want sparse, more interpretable attention or class selection.
 
-This implementation assumes a **1-D vector**; unlike `softmax` above, it doesn't take an `axis`. Batched inputs need the sort and cumulative sum done along the chosen axis.
+This implementation assumes a **non-empty 1-D vector**; unlike `softmax` above, it doesn't take an `axis`. Batched inputs need the sort and cumulative sum done along the chosen axis.
 
 ```python
 def sparsemax(z):
@@ -851,6 +851,8 @@ input x
    ▼
 Output activation → answer            (softmax / sigmoid / identity)
 ```
+
+This example ends with softmax because it is a multi-class classifier; other tasks use the output activation and loss pairing in the table below.
 
 The **final linear layer has no hidden activation**. Logits must be allowed to be negative; clamping them with ReLU would destroy information the output function needs.
 
