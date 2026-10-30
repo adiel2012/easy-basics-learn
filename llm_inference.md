@@ -169,28 +169,148 @@ Softmax gives probabilities. A **decoding rule** decides how to use them.
 - **Why it matters:** it adds variety, so answers sound less repetitive. This is why the same prompt can give different answers.
 - **Example:** in Step 1, "cats" would be picked 33% of the time, "love" 24%, and [EOS] 20%. If [EOS] were picked, the answer would simply be "I love".
 
+Plain sampling has a problem: **every** token keeps some chance, even silly ones. In a real model with 100,000 tokens, thousands of unlikely tokens each have a tiny chance, and together they add up. Now and then one gets picked and the text goes off the rails.
+
+Three settings control this. **Temperature** reshapes the probabilities. **Top-k** and **top-p** cut off the unlikely tokens.
+
+> **Analogy: picking a restaurant.** Temperature is how adventurous you feel: low means "my usual place", high means "anything goes". Top-k is "only consider my k favourite places". Top-p is "only consider the places that together make up, say, 80% of my visits".
+
 ### Temperature
 
-- **What it is:** a knob that reshapes the probabilities before sampling. The logits are divided by the temperature T before softmax.
-- **Why it matters:** it controls how **sharp** the probabilities are. Low T concentrates probability on the top tokens; high T spreads it out. It doesn't guarantee better or more creative text, only more or less variety.
-- **Example:** the Step 1 probability of "cats":
+- **What it is:** a number T that the logits are divided by, **before** softmax:
 
-| Temperature | Effect | P(cats) |
+  ```
+  probabilities = softmax(logits / T)
+  ```
+
+- **Why it matters:** it controls how **sharp** the probabilities are.
+  - **Low T (below 1):** dividing by a small number stretches the gaps between logits. The top token gets even more likely.
+  - **T = 1:** nothing changes.
+  - **High T (above 1):** dividing by a big number shrinks the gaps. The probabilities become more even, so unlikely tokens get more chances.
+- **Important:** temperature never changes the **order** of the tokens. The most likely token stays the most likely. It also doesn't make text "better" or "more creative" by itself, only more or less varied.
+- **Example:** all of Step 1 (logits 0.330, 1.670, 2.000, 1.340, 1.495):
+
+| Token | T = 0.5 (sharper) | T = 1 (unchanged) | T = 2 (flatter) |
+|---|---|---|---|
+| cats | **0.458** | **0.330** | **0.265** |
+| love | 0.237 | 0.237 | 0.224 |
+| [EOS] | 0.167 | 0.199 | 0.206 |
+| dogs | 0.122 | 0.171 | 0.190 |
+| I | 0.016 | 0.062 | 0.115 |
+
+At T = 0.5, "I" almost disappears (1.6%). At T = 2, it gets almost twice its normal chance (11.5%).
+
+**The extremes:**
+
+- **T close to 0:** the top token's probability approaches 1. Sampling becomes **greedy**. (You can't divide by exactly 0, so most tools treat T = 0 as "use greedy".)
+- **Very high T:** all probabilities approach equal. The model picks almost at random.
+
+### Top-k
+
+- **What it is:** keep only the **k most likely** tokens. Throw away the rest. Then **renormalize**: divide each kept probability by their sum, so they add up to 1 again.
+- **Why it matters:** the unlikely tokens can never be picked, however lucky the dice roll.
+- **Example:** Step 1 with k = 2:
+
+| Token | Probability | Kept? | New probability |
+|---|---|---|---|
+| cats | 0.330 | ✅ | 0.330 / 0.567 = **0.582** |
+| love | 0.237 | ✅ | 0.237 / 0.567 = **0.418** |
+| [EOS] | 0.199 | ❌ | 0 |
+| dogs | 0.171 | ❌ | 0 |
+| I | 0.062 | ❌ | 0 |
+| **Sum of kept** | **0.567** | | **1.000** |
+
+- **The weakness:** k is **fixed**. It keeps the same number of tokens whether the model is sure or unsure.
+  - When the model is **sure** (one token has 95%), k = 50 still lets 49 poor choices in.
+  - When the model is **unsure** (many good options), k = 2 cuts off good choices.
+
+### Top-p (nucleus sampling)
+
+Top-p fixes that weakness. Instead of a fixed **number** of tokens, it keeps a fixed **amount of probability**.
+
+- **What it is:**
+  1. Sort the tokens from most to least likely.
+  2. Add up their probabilities, one by one (a **running total**).
+  3. Stop as soon as the total reaches **p** or more. Keep those tokens.
+  4. Renormalize the kept tokens.
+- **Why it matters:** the number of kept tokens **adapts** to how sure the model is. The kept set is called the **nucleus**, which is why this is also called **nucleus sampling**.
+- **Example:** p = 0.8, at both steps of our toy model.
+
+**Step 1 ("I love"): the model is unsure.**
+
+| Token | Probability | Running total | Kept? |
+|---|---|---|---|
+| cats | 0.330 | 0.330 | ✅ (not yet 0.8) |
+| love | 0.237 | 0.567 | ✅ (not yet 0.8) |
+| [EOS] | 0.199 | 0.766 | ✅ (not yet 0.8) |
+| dogs | 0.171 | 0.937 | ✅ reached 0.8, stop here |
+| I | 0.062 | | ❌ |
+
+**4 tokens kept.** Renormalized (÷ 0.937): cats 0.352, love 0.253, [EOS] 0.212, dogs 0.182.
+
+**Step 2 ("I love cats"): the model is sure.**
+
+| Token | Probability | Running total | Kept? |
+|---|---|---|---|
+| [EOS] | 0.635 | 0.635 | ✅ (not yet 0.8) |
+| cats | 0.265 | 0.900 | ✅ reached 0.8, stop here |
+| love | 0.046 | | ❌ |
+| I | 0.046 | | ❌ |
+| dogs | 0.008 | | ❌ |
+
+**Only 2 tokens kept.** Renormalized (÷ 0.900): [EOS] 0.706, cats 0.294.
+
+Same p, but 4 tokens in the unsure step and 2 in the sure step. That's the advantage over top-k.
+
+> **Common mistake:** top-p keeps the token that **crosses** p, not just the ones below it. In Step 1, the total before "dogs" is only 0.766, which is less than 0.8, so "dogs" is needed to reach 0.8.
+
+### Putting it all together
+
+These settings are usually used **together**, in this order:
+
+```
+logits
+  │  ÷ T                       (temperature: reshape)
+  ▼
+softmax → probabilities
+  │  keep the top k            (top-k: cut by count)
+  │  keep the top p            (top-p: cut by probability)
+  ▼
+renormalize → sample one token
+```
+
+The order matters, because temperature changes the probabilities that top-p adds up. Step 1 with p = 0.8:
+
+| Temperature | Running totals (cats, love, [EOS], dogs) | Tokens kept by top-p = 0.8 |
 |---|---|---|
-| T = 0.5 | sharper: the top token wins more often | 0.458 |
-| T = 1 | unchanged | 0.330 |
-| T = 2 | flatter: unlikely tokens get more chances | 0.265 |
+| T = 0.5 | 0.458, 0.695, **0.861** | 3 (cats, love, [EOS]) |
+| T = 1 | 0.330, 0.567, 0.766, **0.937** | 4 (adds dogs) |
+| T = 2 | 0.265, 0.489, 0.695, **0.885** | 4 (adds dogs) |
 
-### Optional: top-k and top-p
+A sharper distribution reaches p sooner, so fewer tokens survive. (Libraries differ slightly in the exact order they apply these steps, but temperature almost always comes first.)
 
-Both **limit which tokens can be sampled**, then renormalize the probabilities of the ones that remain so they sum to 1:
+**Settings that switch things off, or turn them into greedy:**
 
-- **Top-k:** keep only the k most likely tokens. With k = 2 in Step 1, only "cats" and "love" can be picked.
-- **Top-p:** keep the smallest set of top tokens whose probabilities add up to at least p (for example 0.9).
+| Setting | Effect |
+|---|---|
+| T = 1 | temperature has no effect |
+| T → 0 | same as greedy |
+| k = 1 | same as greedy: only the top token is left |
+| k = vocabulary size | top-k has no effect |
+| p = 1.0 | top-p has no effect |
+| very small p (e.g. 0.01) | almost always greedy: only the top token is kept |
 
-The full numbers are in the [Appendix](#appendix-full-arithmetic).
+**Common starting points.** There are no universal best values; each model and tool has its own defaults. Roughly:
+
+- **Facts, code, data extraction:** low temperature (around 0 to 0.3), or greedy. You want the most likely answer.
+- **General chat:** moderate temperature (around 0.7), often with top-p around 0.9.
+- **Brainstorming, stories:** higher temperature (around 0.8 to 1.0), with top-p to stop the strange tail tokens.
+
+A common tip is to adjust **temperature or top-p, not both at once**, so you can tell which change made the difference.
 
 > **Quick check 3.** Probabilities are cats 0.6 and dogs 0.4. What does greedy decoding choose? What might sampling choose?
+>
+> **Quick check 4.** Probabilities are A 0.5, B 0.3, C 0.15, D 0.05. Which tokens does top-p = 0.7 keep? Which does top-k = 3 keep?
 
 ## 6. How inference becomes efficient
 
@@ -215,7 +335,7 @@ So prompt tokens can be processed in parallel, while generated tokens come out o
 
 The cost is memory: the cache grows with every token.
 
-> **Quick check 4.** At Step 2, which keys and values come from the cache, and which must be computed?
+> **Quick check 5.** At Step 2, which keys and values come from the cache, and which must be computed?
 
 ## 7. Remember this
 
@@ -224,7 +344,7 @@ The cost is memory: the cache grows with every token.
 1. **One token at a time.** An LLM loops: read → score → choose → append → repeat, until [EOS] or a length limit. It never writes a whole sentence at once.
 2. **Only the last row predicts.** The other rows still matter: they provide the keys and values the last token attends to.
 3. **Scores → probabilities → choice.** Logits are scores, softmax makes probabilities, and decoding chooses.
-4. **Greedy is fixed; sampling varies.** Temperature, top-k and top-p shape the sampling.
+4. **Greedy is fixed; sampling varies.** Temperature reshapes the probabilities (low = sharper, high = flatter). Top-k keeps a fixed number of tokens; top-p keeps just enough tokens to reach probability p, so it adapts to how sure the model is.
 5. **Nothing is learned during inference.** The weights are fixed. The KV cache only saves computation, and the context window limits how many tokens fit.
 
 ### Exercises
@@ -232,6 +352,8 @@ The cost is memory: the cache grows with every token.
 1. Using the Step 2 table, which token would greedy decoding pick if [EOS] didn't exist?
 2. Logits are [2, 2]. What are the probabilities after softmax?
 3. What happens to sampling if the temperature is very low?
+4. Using the Step 2 probabilities, which tokens does top-k = 3 keep? What problem do you notice?
+5. Using the Step 1 probabilities, which tokens does top-p = 0.5 keep, and what are their new probabilities?
 
 Try the exercises and the quick checks before reading on.
 
@@ -244,13 +366,16 @@ Try the exercises and the quick checks before reading on.
 1. **(b)** It stops generating. [EOS] is the stop signal. The weights never change during inference.
 2. **The last row**, for "love". It's the last token, so through attention it has gathered information from all the tokens before it.
 3. **Greedy always chooses cats**, the highest probability. **Sampling** picks cats about 60% of the time and dogs about 40%.
-4. **"I" and "love" come from the cache** (computed in Step 1). Only **"cats"** needs new keys and values.
+4. **Top-p = 0.7 keeps A and B** (running totals 0.5, then 0.8, which reaches 0.7). **Top-k = 3 keeps A, B and C.**
+5. **"I" and "love" come from the cache** (computed in Step 1). Only **"cats"** needs new keys and values.
 
 **Exercises**
 
 1. **cats** (logit 3.502, the next highest).
 2. **[0.5, 0.5].** Equal scores give equal probabilities.
 3. **It becomes almost greedy.** The top token's probability approaches 1.
+4. **[EOS] and cats, plus one of "I" or "love".** "I" and "love" tie at 0.046, so a tie-breaking rule decides which one gets the third place. It also lets in a weak token (4.6%) even though the model is fairly sure. Top-p = 0.8 would keep only [EOS] and cats.
+5. **cats and love** (running totals 0.330, then 0.567, which reaches 0.5). New probabilities: cats 0.330 / 0.567 = **0.582**, love 0.237 / 0.567 = **0.418**. Here top-p = 0.5 happens to give the same result as top-k = 2.
 
 ## 8. Going further
 
@@ -294,7 +419,9 @@ The model continues the text after the assistant marker, one token at a time, un
 | Greedy decoding | pick the most likely token |
 | Sampling | pick randomly, following the probabilities |
 | Temperature | sharpens (low) or flattens (high) the probabilities |
-| Top-k / top-p | limit sampling to the most likely tokens |
+| Top-k | keep only the k most likely tokens, then sample |
+| Top-p (nucleus sampling) | keep the fewest top tokens whose probabilities reach p, then sample |
+| Renormalize | divide the kept probabilities by their sum so they add up to 1 again |
 | Prefill / decode | read the prompt at once / generate one token at a time |
 | KV cache | saved keys and values from earlier tokens |
 | Context window | the maximum number of tokens the model can handle |
@@ -393,3 +520,33 @@ Keep cats (0.330) and love (0.237). Their sum is 0.567. Renormalize:
 cats: 0.330 / 0.567 = 0.582
 love: 0.237 / 0.567 = 0.418
 ```
+
+### Top-p with p = 0.8
+
+**Step 1.** Running totals: 0.330, 0.567, 0.766, 0.937. The total first reaches 0.8 at "dogs", so 4 tokens are kept. Their sum is 0.937:
+
+```
+cats:  0.330 / 0.937 = 0.352
+love:  0.237 / 0.937 = 0.253
+[EOS]: 0.199 / 0.937 = 0.212
+dogs:  0.171 / 0.937 = 0.182
+```
+
+**Step 2.** Running totals: 0.635, 0.900. The total reaches 0.8 at "cats", so 2 tokens are kept. Their sum is 0.900:
+
+```
+[EOS]: 0.635 / 0.900 = 0.706
+cats:  0.265 / 0.900 = 0.294
+```
+
+### Temperature, then top-p (Step 1, p = 0.8)
+
+Using the temperature table above, sorted from most to least likely:
+
+| T | Sorted probabilities | Running totals | Kept |
+|---|---|---|---|
+| 0.5 | 0.458, 0.237, 0.167, 0.122, 0.016 | 0.458, 0.695, 0.861 | 3 |
+| 1 | 0.330, 0.237, 0.199, 0.171, 0.062 | 0.330, 0.567, 0.766, 0.937 | 4 |
+| 2 | 0.265, 0.224, 0.206, 0.190, 0.115 | 0.265, 0.489, 0.695, 0.885 | 4 |
+
+The order of tokens is the same at every temperature: cats, love, [EOS], dogs, I.
