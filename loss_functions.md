@@ -64,7 +64,7 @@ $$
 ### Mean Absolute Error (MAE, L1 loss)
 
 $$
-L = |y - \hat{y}| \qquad \frac{\partial L}{\partial \hat{y}} = -\operatorname{sign}(y - \hat{y})
+L = |y - \hat{y}| \qquad \frac{\partial L}{\partial \hat{y}} = -\mathrm{sign}(y - \hat{y})
 $$
 
 - **Optimal prediction:** minimizing expected absolute error yields a conditional median (it need not be unique when the distribution has flat regions).
@@ -81,7 +81,7 @@ L_\delta(e) =
 \delta\big(|e| - \tfrac{1}{2}\delta\big) & |e| > \delta
 \end{cases}
 \qquad
-\frac{\partial L}{\partial \hat{y}} = -\operatorname{clip}(e, -\delta, \delta)
+\frac{\partial L}{\partial \hat{y}} = -\mathrm{clip}(e, -\delta, \delta)
 $$
 
 - Quadratic near zero and linear in the tails. Combines MSE's smooth behavior near zero with MAE's robustness to large errors.
@@ -243,7 +243,7 @@ $$
 - KL matters when the target is itself a distribution, e.g. **knowledge distillation**, where a student matches the softened outputs of a teacher at temperature $T$:
 
 $$
-L = T^2 \cdot D_{\text{KL}}\Big(\operatorname{softmax}(z^{\text{teacher}}/T) \,\Big\|\, \operatorname{softmax}(z^{\text{student}}/T)\Big)
+L = T^2 \cdot D_{\text{KL}}\Big(\mathrm{softmax}(z^{\text{teacher}}/T) \,\Big\|\, \mathrm{softmax}(z^{\text{student}}/T)\Big)
 $$
 
 - Asymmetric: $D_{\text{KL}}(P\|Q) \neq D_{\text{KL}}(Q\|P)$. When fitting an approximation $Q$ to a target $P$, forward KL $D_{\text{KL}}(P\|Q)$ tends to favor covering all the regions where $P$ has mass, while reverse KL $D_{\text{KL}}(Q\|P)$ often favors concentrating on individual modes. These are tendencies in common approximation settings, not universal guarantees.

@@ -90,11 +90,11 @@ $$
 R(\theta) = \lVert \theta \rVert_1 = \sum_j |\theta_j|
 $$
 
-- The gradient $\lambda\operatorname{sign}(\theta_j)$ has constant magnitude, so it can push small weights all the way to zero. The result is a **sparse** model, which doubles as feature selection.
+- The gradient $\lambda\mathrm{sign}(\theta_j)$ has constant magnitude, so it can push small weights all the way to zero. The result is a **sparse** model, which doubles as feature selection.
 - Not differentiable at zero. Solvers use coordinate descent or **proximal gradient** updates (soft-thresholding):
 
 $$
-\theta_j \leftarrow \operatorname{sign}(\tilde{\theta}_j)\,\max\big(|\tilde{\theta}_j| - \eta\lambda,\; 0\big)
+\theta_j \leftarrow \mathrm{sign}(\tilde{\theta}_j)\,\max\big(|\tilde{\theta}_j| - \eta\lambda,\; 0\big)
 $$
 
   where $\tilde{\theta}$ is the parameter after an ordinary gradient step. Plain SGD with an L1 term hovers around zero rather than landing exactly on it.
@@ -154,7 +154,7 @@ Only use transformations that truly preserve the label. Flipping a "6" verticall
 **Mixup** trains on convex combinations of pairs of examples and their labels:
 
 $$
-\tilde{x} = \lambda x_i + (1 - \lambda)x_j, \qquad \tilde{y} = \lambda y_i + (1 - \lambda)y_j, \qquad \lambda \sim \operatorname{Beta}(\alpha, \alpha)
+\tilde{x} = \lambda x_i + (1 - \lambda)x_j, \qquad \tilde{y} = \lambda y_i + (1 - \lambda)y_j, \qquad \lambda \sim \mathrm{Beta}(\alpha, \alpha)
 $$
 
 **CutMix** pastes a rectangular patch from one image into another and mixes labels in proportion to the patch area. Both encourage linear behavior between training examples and improve calibration. Typical values are $\alpha = 0.2$ for mixup and $\alpha = 1.0$ for CutMix.
@@ -186,7 +186,7 @@ $$
 During training each unit is kept with probability $1 - p$ and zeroed otherwise. With **inverted dropout** (what frameworks implement), the kept units are scaled up so the expected activation is unchanged:
 
 $$
-\tilde{h}_i = \frac{m_i\, h_i}{1 - p}, \qquad m_i \sim \operatorname{Bernoulli}(1 - p)
+\tilde{h}_i = \frac{m_i\, h_i}{1 - p}, \qquad m_i \sim \mathrm{Bernoulli}(1 - p)
 $$
 
 At inference dropout is turned off and no rescaling is needed. **Remember `model.eval()` in PyTorch.**
