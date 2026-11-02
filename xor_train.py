@@ -15,7 +15,19 @@ needs a hidden layer.
 import random
 from mini_autograd import Value
 
-random.seed(1)
+# ---- settings (change these to experiment) --------------------------------
+seed = 1
+n_hidden = 4
+learning_rate = 0.5
+epochs = 2000
+# Freezing: a parameter with requires_grad = False keeps its current value.
+# Set freeze_hidden = True to train only the output neuron.
+freeze_hidden = False
+
+# ---- data -------------------------------------------------------------------
+# Plain numbers, not Values: the engine wraps them as frozen constants.
+X = [[0, 0], [0, 1], [1, 0], [1, 1]]
+Y = [0, 1, 1, 0]
 
 
 class Neuron:
@@ -52,48 +64,50 @@ class MLP:
         return ps + self.out_w + [self.out_b]
 
 
-X = [[0, 0], [0, 1], [1, 0], [1, 1]]
-Y = [0, 1, 1, 0]
+def main():
+    random.seed(seed)  # same seed -> same starting weights -> same results
+    model = MLP(n_in=2, n_hidden=n_hidden)
+    params = model.params()
 
-model = MLP(n_in=2, n_hidden=4)
-params = model.params()
+    if freeze_hidden:
+        for n in model.hidden:
+            for p in n.params():
+                p.requires_grad = False
 
-learning_rate = 0.5
-epochs = 2000
+    trainable = sum(1 for p in params if p.requires_grad)
+    print(f"trainable parameters: {trainable} of {len(params)}")
 
-# Freezing: a parameter with requires_grad = False keeps its current value.
-# Set freeze_hidden = True to train only the output neuron.
-freeze_hidden = False
-if freeze_hidden:
-    for n in model.hidden:
-        for p in n.params():
-            p.requires_grad = False
+    for epoch in range(epochs):
+        # 1. Forward pass: build the graph and compute the total loss
+        loss = Value(0.0)
+        for x, y in zip(X, Y):
+            pred = model(x)
+            loss = loss + (pred - y) ** 2  # squared error
 
-trainable = sum(1 for p in params if p.requires_grad)
-print(f"trainable parameters: {trainable} of {len(params)}")
+        # 2. Backward pass: clear old gradients, then compute new ones
+        for p in params:
+            p.grad = 0.0
+        loss.backward()
 
-for epoch in range(epochs):
-    # 1. Forward pass: build the graph and compute the total loss
-    loss = Value(0.0)
+        # 3. Update: move each parameter a little against its gradient
+        for p in params:
+            if p.requires_grad:  # frozen parameters are skipped
+                p.data -= learning_rate * p.grad
+
+        if epoch % 400 == 0 or epoch == epochs - 1:
+            print(f"epoch {epoch:4d}   loss {loss.data:.5f}")
+
+    print()
+    print("x1  x2  target  output  predicted")
+    correct = 0
     for x, y in zip(X, Y):
-        pred = model([Value(v) for v in x])
-        loss = loss + (pred - y) ** 2  # squared error
+        out = model(x).data
+        predicted = int(out >= 0.5)
+        correct += predicted == y
+        print(f"{x[0]}   {x[1]}     {y}      {out:.3f}   {predicted}")
+    print(f"\ncorrect: {correct} of {len(X)}")
 
-    # 2. Backward pass: clear old gradients, then compute new ones
-    for p in params:
-        p.grad = 0.0
-    loss.backward()
 
-    # 3. Update: move each parameter a little against its gradient
-    for p in params:
-        if p.requires_grad:  # frozen parameters are skipped
-            p.data -= learning_rate * p.grad
-
-    if epoch % 400 == 0 or epoch == epochs - 1:
-        print(f"epoch {epoch:4d}   loss {loss.data:.5f}")
-
-print()
-print("x1  x2  target  output  predicted")
-for x, y in zip(X, Y):
-    out = model([Value(v) for v in x]).data
-    print(f"{x[0]}   {x[1]}     {y}      {out:.3f}   {int(out >= 0.5)}")
+# Run training only when this file is executed directly, not when imported.
+if __name__ == "__main__":
+    main()

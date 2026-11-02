@@ -134,7 +134,7 @@ def __add__(self, other):
 
 **In plain words:** If `out = x + y`, then nudging `x` by 1 changes `out` by 1, and nudging `y` by 1 also changes `out` by 1. So each input gets the full gradient of the output.
 
-`_wrap` turns a plain number into a `Value`, so you can write `x + 1` instead of `x + Value(1)`.
+`_wrap` turns a plain number into a `Value`, so you can write `x + 1` instead of `x + Value(1)`. The wrapped number is a **constant**: `_wrap` creates it with `requires_grad=False`, so it still receives a gradient during `backward()`, but the update step never changes it. Values you create yourself with `Value(...)` are trainable by default.
 
 #### Multiplication
 
@@ -438,7 +438,19 @@ needs a hidden layer.
 import random
 from mini_autograd import Value
 
-random.seed(1)
+# ---- settings (change these to experiment) --------------------------------
+seed = 1
+n_hidden = 4
+learning_rate = 0.5
+epochs = 2000
+# Freezing: a parameter with requires_grad = False keeps its current value.
+# Set freeze_hidden = True to train only the output neuron.
+freeze_hidden = False
+
+# ---- data -------------------------------------------------------------------
+# Plain numbers, not Values: the engine wraps them as frozen constants.
+X = [[0, 0], [0, 1], [1, 0], [1, 1]]
+Y = [0, 1, 1, 0]
 
 
 class Neuron:
@@ -475,51 +487,53 @@ class MLP:
         return ps + self.out_w + [self.out_b]
 
 
-X = [[0, 0], [0, 1], [1, 0], [1, 1]]
-Y = [0, 1, 1, 0]
+def main():
+    random.seed(seed)  # same seed -> same starting weights -> same results
+    model = MLP(n_in=2, n_hidden=n_hidden)
+    params = model.params()
 
-model = MLP(n_in=2, n_hidden=4)
-params = model.params()
+    if freeze_hidden:
+        for n in model.hidden:
+            for p in n.params():
+                p.requires_grad = False
 
-learning_rate = 0.5
-epochs = 2000
+    trainable = sum(1 for p in params if p.requires_grad)
+    print(f"trainable parameters: {trainable} of {len(params)}")
 
-# Freezing: a parameter with requires_grad = False keeps its current value.
-# Set freeze_hidden = True to train only the output neuron.
-freeze_hidden = False
-if freeze_hidden:
-    for n in model.hidden:
-        for p in n.params():
-            p.requires_grad = False
+    for epoch in range(epochs):
+        # 1. Forward pass: build the graph and compute the total loss
+        loss = Value(0.0)
+        for x, y in zip(X, Y):
+            pred = model(x)
+            loss = loss + (pred - y) ** 2  # squared error
 
-trainable = sum(1 for p in params if p.requires_grad)
-print(f"trainable parameters: {trainable} of {len(params)}")
+        # 2. Backward pass: clear old gradients, then compute new ones
+        for p in params:
+            p.grad = 0.0
+        loss.backward()
 
-for epoch in range(epochs):
-    # 1. Forward pass: build the graph and compute the total loss
-    loss = Value(0.0)
+        # 3. Update: move each parameter a little against its gradient
+        for p in params:
+            if p.requires_grad:  # frozen parameters are skipped
+                p.data -= learning_rate * p.grad
+
+        if epoch % 400 == 0 or epoch == epochs - 1:
+            print(f"epoch {epoch:4d}   loss {loss.data:.5f}")
+
+    print()
+    print("x1  x2  target  output  predicted")
+    correct = 0
     for x, y in zip(X, Y):
-        pred = model([Value(v) for v in x])
-        loss = loss + (pred - y) ** 2  # squared error
+        out = model(x).data
+        predicted = int(out >= 0.5)
+        correct += predicted == y
+        print(f"{x[0]}   {x[1]}     {y}      {out:.3f}   {predicted}")
+    print(f"\ncorrect: {correct} of {len(X)}")
 
-    # 2. Backward pass: clear old gradients, then compute new ones
-    for p in params:
-        p.grad = 0.0
-    loss.backward()
 
-    # 3. Update: move each parameter a little against its gradient
-    for p in params:
-        if p.requires_grad:  # frozen parameters are skipped
-            p.data -= learning_rate * p.grad
-
-    if epoch % 400 == 0 or epoch == epochs - 1:
-        print(f"epoch {epoch:4d}   loss {loss.data:.5f}")
-
-print()
-print("x1  x2  target  output  predicted")
-for x, y in zip(X, Y):
-    out = model([Value(v) for v in x]).data
-    print(f"{x[0]}   {x[1]}     {y}      {out:.3f}   {int(out >= 0.5)}")
+# Run training only when this file is executed directly, not when imported.
+if __name__ == "__main__":
+    main()
 ```
 
 #### Running it
@@ -528,7 +542,7 @@ for x, y in zip(X, Y):
 python xor_train.py
 ```
 
-Output from running the script as written (`random.seed(1)`). Other random seeds may produce different loss values and predictions. Some initializations may require more training or a different learning rate.
+Output from running the script as written (`seed = 1`). Other random seeds may produce different loss values and predictions. Some initializations may require more training or a different learning rate.
 
 ```
 trainable parameters: 17 of 17
@@ -544,6 +558,8 @@ x1  x2  target  output  predicted
 0   1     1      0.987   1
 1   0     1      0.987   1
 1   1     0      0.015   0
+
+correct: 4 of 4
 ```
 
 The printed losses are measured before each epoch's update, but the final table is computed after the last update, so the two use slightly different weights.
@@ -552,7 +568,7 @@ Read the last table:
 
 - **output** is the network's estimated probability that the answer is 1. It is not guaranteed to be perfectly calibrated.
 - **predicted** turns that probability into a class: 1 if the output is at least 0.5, otherwise 0.
-- When **predicted** matches **target** in every row, the network has learned XOR.
+- When **predicted** matches **target** in every row (`correct: 4 of 4`), the network has learned XOR.
 - A lower loss usually means better predictions, but it does not guarantee correct classifications at every step.
 - The network learns outputs near the correct labels on these four training examples. This alone does not show how well it would generalize to other data. Four examples can be memorized, so success here is not proof of broad learning.
 
@@ -626,7 +642,7 @@ This is a teaching engine, not a production library:
 3. Build a tiny neuron: `out = (w * x + bias).tanh()`, then call `backward()` and print the gradient for `w`.
 4. Change `learning_rate` to `0.05`, `5.0`, and `10.0`. Which one learns slowly, which one learns faster, and which one breaks training?
 5. Change `n_hidden` from `4` to `1`. Can a single hidden neuron learn XOR? Why or why not? Hint: as the inputs change, can the output of a single tanh neuron followed by a sigmoid ever go up and then down again?
-6. Change `random.seed(1)` to a different number. Does training still work every time?
+6. Change `seed = 1` to a different number. Does training still work every time?
 7. Print `params[0].grad` before and after `loss.backward()` to see gradients appear.
 
 Try answering before reading on. For questions 4 to 7, change `xor_train.py` and run it.
