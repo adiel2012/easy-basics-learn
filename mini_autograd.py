@@ -23,7 +23,8 @@ class Value:
 
     @staticmethod
     def _wrap(x):
-        return x if isinstance(x, Value) else Value(x)
+        # plain numbers become constants: frozen, so an optimizer won't update them
+        return x if isinstance(x, Value) else Value(x, requires_grad=False)
 
     # ---- arithmetic -------------------------------------------------------
 
