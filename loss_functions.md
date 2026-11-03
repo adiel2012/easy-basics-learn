@@ -134,7 +134,7 @@ def log_cosh_loss(y_hat, y):
 ### Quantile (Pinball) Loss
 
 $$
-L_\tau(e) = \max\big(\tau e,\thickspace (\tau - 1)e\big), \qquad \tau \in (0, 1)
+L_\tau(e) = \max\big(\tau e,\ (\tau - 1)e\big), \qquad \tau \in (0, 1)
 $$
 
 - **Optimal prediction:** the conditional $\tau$-quantile. With $\tau = 0.5$ it is half the MAE.
@@ -386,13 +386,13 @@ def focal_loss(z, y, alpha=0.25, gamma=2.0):
 With label $y \in \lbrace-1, +1\rbrace$ and raw score $f(x)$:
 
 $$
-L = \max\big(0,\thickspace 1 - y f(x)\big)
+L = \max\big(0,\ 1 - y f(x)\big)
 $$
 
 - The loss of linear SVMs. It is zero once an example is on the correct side with margin at least 1, so only margin violators (the "support vectors") contribute gradient.
 - Produces scores, not calibrated probabilities.
 - **Squared hinge** $\max(0, 1 - yf(x))^2$ is differentiable and penalizes violations more strongly.
-- **Multi-class hinge** (Crammer–Singer): $\max\big(0,\thickspace 1 + \max_{c \ne k} f_c - f_k\big)$.
+- **Multi-class hinge** (Crammer–Singer): $\max\big(0,\ 1 + \max_{c \ne k} f_c - f_k\big)$.
 
 ```python
 def hinge_loss(score, y):
@@ -478,7 +478,7 @@ These losses shape an **embedding space** or a **ranking** rather than predict a
 For an embedding distance $d$ between two items and $y = 1$ if they are similar:
 
 $$
-L = y\thinspace d^2 + (1 - y)\max(0,\thickspace m - d)^2
+L = y\thinspace d^2 + (1 - y)\max(0,\ m - d)^2
 $$
 
 Pulls similar pairs together and pushes dissimilar pairs apart until they are at least margin $m$ away.
@@ -496,7 +496,7 @@ def contrastive_loss(x1, x2, y, margin=1.0):
 ### Triplet Loss
 
 $$
-L = \max\big(0,\thickspace d(a, p) - d(a, n) + \alpha\big)
+L = \max\big(0,\ d(a, p) - d(a, n) + \alpha\big)
 $$
 
 - Anchor $a$ must be closer to positive $p$ than to negative $n$ by margin $\alpha$.
@@ -544,7 +544,7 @@ def info_nce(q, k, tau=0.1):
 | Loss | Formula | Used in |
 |---|---|---|
 | RankNet / BPR | $-\log \sigma(s_i - s_j)$ for $i$ preferred over $j$ | Recommenders, learning to rank |
-| Margin ranking | $\max(0,\thickspace m - (s_i - s_j))$ | Retrieval |
+| Margin ranking | $\max(0,\ m - (s_i - s_j))$ | Retrieval |
 | Bradley–Terry reward loss | $-\log\sigma\big(r(y_w) - r(y_l)\big)$ | Reward models for RLHF |
 | LambdaRank / ListNet | Weights pairs by their effect on NDCG / uses whole list | Search ranking |
 

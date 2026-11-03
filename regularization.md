@@ -94,7 +94,7 @@ $$
 - Not differentiable at zero. Solvers use coordinate descent or **proximal gradient** updates (soft-thresholding):
 
 $$
-\theta_j \leftarrow \mathrm{sign}(\tilde{\theta}_j)\thinspace\max\big(|\tilde{\theta}_j| - \eta\lambda,\thickspace 0\big)
+\theta_j \leftarrow \mathrm{sign}(\tilde{\theta}_j)\thinspace\max\big(|\tilde{\theta}_j| - \eta\lambda,\ 0\big)
 $$
 
   where $\tilde{\theta}$ is the parameter after an ordinary gradient step. Plain SGD with an L1 term hovers around zero rather than landing exactly on it.
@@ -263,7 +263,7 @@ Rescales gradients when their norm exceeds a threshold. Its role is stability (p
 Maximum a posteriori (MAP) estimation minimizes
 
 $$
--\log p(\theta \mid \mathcal{D}) = \underbrace{-\log p(\mathcal{D} \mid \theta)}_{\text{data loss (NLL)}}\thickspace \underbrace{-\log p(\theta)}_{\text{regularizer}} + \text{const}
+-\log p(\theta \mid \mathcal{D}) = \underbrace{-\log p(\mathcal{D} \mid \theta)}_{\text{data loss (NLL)}}\ \underbrace{-\log p(\theta)}_{\text{regularizer}} + \text{const}
 $$
 
 so a regularizer is a **prior belief about the weights**:
