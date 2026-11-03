@@ -329,7 +329,25 @@ where $k$ is the true class.
 
 - The second form (**log-sum-exp**) is how it is computed stably.
 - **Sparse** categorical cross-entropy is the same loss with integer class labels instead of one-hot vectors.
-- With **label smoothing** $\varepsilon$, the target becomes $y_c = (1 - \varepsilon)\thinspace\mathbb{1}[c = k] + \varepsilon / C$. The model is no longer trained toward perfectly confident predictions, which can improve generalization. It also changes the probability targets themselves, so the trained model's probabilities no longer estimate the true class probabilities and calibration can get better or worse. See [`regularization.md`](regularization.md#label-smoothing).
+
+**Label smoothing.** A one-hot target asks for probability 1 on the true class $k$. Softmax only reaches 1 in the limit where $z_k$ is infinitely larger than every other logit, so cross-entropy keeps pushing the logits apart even on examples the model already classifies correctly. Label smoothing takes a small amount $\varepsilon$ of the target's probability and spreads it evenly over all $C$ classes:
+
+$$
+y_c = (1 - \varepsilon)\thinspace\mathbb{1}[c = k] + \frac{\varepsilon}{C}
+$$
+
+Here $\mathbb{1}[c = k]$ is 1 for the true class and 0 for the others. With $C = 4$ classes, $\varepsilon = 0.1$, and true class $k = 2$:
+
+| Class | 1 | 2 (true) | 3 | 4 |
+|---|---|---|---|---|
+| One-hot target | 0 | 1 | 0 | 0 |
+| Smoothed target | 0.025 | 0.925 | 0.025 | 0.025 |
+
+- **The target becomes reachable.** The loss is now minimized at a finite gap between the true logit and the others, $z_k - z_c = \log\frac{1 - \varepsilon + \varepsilon/C}{\varepsilon/C}$, which is $\log 37 \approx 3.6$ in the example.
+- **The gradient pushes back on overconfidence.** It is still $p_c - y_c$, but with the smoothed $y_c$. Once $p_k$ exceeds $0.925$, the gradient on $z_k$ turns positive and gradient descent lowers it. This keeps the logits bounded and acts as a regularizer, which often improves generalization.
+- **An equivalent view:** the loss equals $(1 - \varepsilon)$ times the usual cross-entropy plus $\varepsilon$ times the cross-entropy against a uniform distribution, i.e. the normal loss plus a penalty for predictions far from uniform.
+- **In practice:** $\varepsilon = 0.1$ is a common default. PyTorch exposes it as `nn.CrossEntropyLoss(label_smoothing=0.1)`; the `cross_entropy` function below builds the smoothed target explicitly.
+- **Trade-offs:** the model is trained toward the smoothed targets, so its probabilities no longer estimate the true class probabilities. Calibration can get better (for an overconfident network) or worse. It can also hurt knowledge distillation. See [`regularization.md`](regularization.md#label-smoothing).
 
 ```python
 def log_softmax(z, dim=-1):
