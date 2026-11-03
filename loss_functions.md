@@ -150,19 +150,48 @@ def quantile_loss(y_hat, y, tau=0.5):
 
 ### Gaussian Negative Log-Likelihood (heteroscedastic regression)
 
-When the model predicts both a mean $\mu$ and a variance $s^2$:
+Plain MSE gives one prediction per input and assumes the noise is the same everywhere. Here the network predicts **two numbers for every input $x$**: a mean $\mu(x)$ (the prediction) and a variance $s^2(x)$ (how uncertain that prediction is):
 
 $$
-L = \frac{1}{2}\left(\log s^2 + \frac{(y - \mu)^2}{s^2}\right)
+L = \frac{1}{2}\left(\log s^2(x) + \frac{\big(y - \mu(x)\big)^2}{s^2(x)}\right)
 $$
 
-- The model learns per-example uncertainty: it can reduce the squared-error term on hard examples by predicting a larger variance, at a cost of $\log s^2$.
-- Predict $\log s^2$ (not $s^2$ directly) for numerical stability.
+**What gets trained.** $\mu$ and $s^2$ are not parameters. They are outputs of the network, recomputed for every example, typically from two output heads on a shared body. Training updates the network's weights, and the loss reaches them by backpropagating through both outputs. There is no target for $s^2$: the network learns uncertainty only from how far $\mu$ lands from $y$.
+
+**What each output learns** (writing $v = \log s^2$, which is what the network actually outputs):
+
+$$
+\frac{\partial L}{\partial \mu} = -\frac{y - \mu}{s^2} \qquad \frac{\partial L}{\partial v} = \frac{1}{2}\left(1 - \frac{(y - \mu)^2}{s^2}\right)
+$$
+
+- **$\mu$** is pulled toward $y$, like with MSE, but the pull is divided by $s^2$. Examples the model marks as uncertain move $\mu$ less.
+- **$s^2$** settles where the second gradient is zero, at $s^2 = (y - \mu)^2$. In expectation that is the variance of $y$ around $\mu$ for inputs like $x$. So $s^2$ learns to predict the squared error the model makes on that kind of input.
+- **The trade-off.** On a hard example the model can shrink the squared-error term by predicting a larger variance, but pays $\log s^2$ for it. Neither term can be cheated alone.
+- **Pitfall.** Raising $s^2$ also weakens the pull on $\mu$, so the model can "give up" on hard examples instead of fitting them. β-NLL (Seitzer et al., 2022) counters this by weighting each example's loss by a detached $(s^2)^\beta$, with $\beta \approx 0.5$.
+- **Predict $\log s^2$, not $s^2$.** Any real output is then a valid variance, and there is no division by a value near zero. Clamping it (e.g. to $[-10, 10]$) adds a further guard early in training.
+- With $s^2$ fixed to the same constant for every example, the loss is MSE scaled by $1/(2s^2)$ plus a constant, so this is a strict generalization of MSE.
 
 ```python
 def gaussian_nll_loss(mu, log_var, y):
     # the model outputs log s^2, so the variance exp(log_var) is always positive
     return 0.5 * (log_var + (y - mu) ** 2 / log_var.exp()).mean()
+
+class MeanVarianceNet(torch.nn.Module):
+    # one shared body, two heads: mu(x) and log s^2(x)
+    def __init__(self, d_in, d_hidden=64):
+        super().__init__()
+        self.body = torch.nn.Sequential(torch.nn.Linear(d_in, d_hidden), torch.nn.ReLU())
+        self.mu_head = torch.nn.Linear(d_hidden, 1)
+        self.log_var_head = torch.nn.Linear(d_hidden, 1)
+
+    def forward(self, x):
+        h = self.body(x)
+        return self.mu_head(h).squeeze(-1), self.log_var_head(h).squeeze(-1).clamp(-10, 10)
+
+model = MeanVarianceNet(d_in=8)
+mu, log_var = model(x)                      # a different mu and s^2 for every example
+loss = gaussian_nll_loss(mu, log_var, y)
+loss.backward()                             # gradients reach the body and both heads
 ```
 
 ### Losses for Positive and Count Targets
