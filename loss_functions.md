@@ -385,9 +385,29 @@ def focal_loss(z, y, alpha=0.25, gamma=2.0):
 
 With label $y \in \lbrace-1, +1\rbrace$ and raw score $f(x)$:
 
+**What $f(x)$ is.** The model's output before any squashing: a single real number that can be anything from $-\infty$ to $+\infty$. For a linear SVM it is $f(x) = w^\top x + b$. Like the logit $z$ in binary cross-entropy, but it is never turned into a probability.
+
+- **Sign = predicted class.** $f(x) > 0$ predicts $+1$, $f(x) < 0$ predicts $-1$, and $f(x) = 0$ is the decision boundary.
+- **Size = confidence.** A larger $\lvert f(x) \rvert$ means the example is farther from the boundary.
+- **$y f(x)$ is the margin.** It is positive when the prediction is right and negative when it is wrong, so one number captures both correctness and confidence.
+
+The hinge loss is:
+
 $$
 L = \max\big(0,\ 1 - y f(x)\big)
 $$
+
+For a positive example ($y = +1$):
+
+| $f(x)$ | $y f(x)$ | Loss | Situation |
+|---|---|---|---|
+| 2.5 | 2.5 | 0 | Correct and confident: no gradient |
+| 1.0 | 1.0 | 0 | Correct, exactly on the margin |
+| 0.4 | 0.4 | 0.6 | Correct, but too close to the boundary |
+| 0 | 0 | 1 | On the decision boundary |
+| −1.5 | −1.5 | 2.5 | Wrong class: loss grows linearly |
+
+The loss asks for more than just the right sign. Every example must be correct by a margin of at least 1, and the penalty grows linearly with how far short it falls.
 
 - The loss of linear SVMs. It is zero once an example is on the correct side with margin at least 1, so only margin violators (the "support vectors") contribute gradient.
 - Produces scores, not calibrated probabilities.
