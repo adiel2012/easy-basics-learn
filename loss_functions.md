@@ -3,7 +3,7 @@
 A loss function measures how far a model's prediction is from the target. Training adjusts the parameters $\theta$ to minimize a **training objective**, which is usually the average loss plus an optional regularization penalty:
 
 $$
-J(\theta) = \underbrace{\frac{1}{N}\sum_{i=1}^{N} L\big(y_i, f(x_i; \theta)\big)}_{\text{prediction error}} + \underbrace{\lambda\, R(\theta)}_{\text{regularization}}
+J(\theta) = \underbrace{\frac{1}{N}\sum_{i=1}^{N} L\big(y_i, f(x_i; \theta)\big)}_{\text{prediction error}} + \underbrace{\lambda\thinspace R(\theta)}_{\text{regularization}}
 $$
 
 The first term measures how wrong the predictions are; the second penalizes undesirable parameter configurations (see [`regularization.md`](regularization.md)). This file is about the first term.
@@ -134,7 +134,7 @@ def log_cosh_loss(y_hat, y):
 ### Quantile (Pinball) Loss
 
 $$
-L_\tau(e) = \max\big(\tau e,\; (\tau - 1)e\big), \qquad \tau \in (0, 1)
+L_\tau(e) = \max\big(\tau e,\thickspace (\tau - 1)e\big), \qquad \tau \in (0, 1)
 $$
 
 - **Optimal prediction:** the conditional $\tau$-quantile. With $\tau = 0.5$ it is half the MAE.
@@ -247,7 +247,17 @@ def tweedie_loss(log_mu, y, p=1.5):
 
 ### Binary Cross-Entropy (Log Loss)
 
-With label $y \in \{0, 1\}$, logit $z$, and $p = \sigma(z)$:
+With label $y \in \lbrace0, 1\rbrace$, the model outputs a **logit** $z$: a raw score that can be any real number. The **sigmoid** function $\sigma$ turns it into a probability $p = \sigma(z)$:
+
+$$
+\sigma(z) = \frac{1}{1 + e^{-z}}
+$$
+
+| $z$ | $-4$ | $-2$ | $0$ | $2$ | $4$ |
+|---|---|---|---|---|---|
+| $p = \sigma(z)$ | 0.018 | 0.12 | 0.5 | 0.88 | 0.982 |
+
+The sigmoid squashes any $z$ into $(0, 1)$: $z = 0$ means a 50/50 guess, large positive $z$ pushes $p$ toward 1, and large negative $z$ toward 0. It is the inverse of the log-odds, $z = \log\frac{p}{1 - p}$, so the logit is the model's evidence for class 1 on a log-odds scale. The loss is then:
 
 $$
 L = -\big[y \log p + (1 - y)\log(1 - p)\big] \qquad \frac{\partial L}{\partial z} = p - y
@@ -260,7 +270,7 @@ $$
 **Stable form from logits** (what frameworks compute internally):
 
 $$
-L = \max(z, 0) - z\,y + \log\big(1 + e^{-|z|}\big)
+L = \max(z, 0) - z\thinspace y + \log\big(1 + e^{-|z|}\big)
 $$
 
 ```python
@@ -281,7 +291,7 @@ This is where the loss meets [`backpropagation.md`](backpropagation.md). Take on
 |---|---|
 | Loss | $-\log 0.2 \approx 1.61$ |
 | Output gradient $\partial L / \partial z = p - y$ | $0.2 - 1 = -0.8$ |
-| Gradient-descent step $z \leftarrow z - \eta\,(-0.8)$ | $z$ increases by $0.8\eta$ |
+| Gradient-descent step $z \leftarrow z - \eta\thinspace(-0.8)$ | $z$ increases by $0.8\eta$ |
 
 The negative gradient means *increasing* the logit lowers the loss, so the update pushes $z$ up and $p$ toward 1. Backpropagation then carries this $-0.8$ backward through the network with the chain rule to get the gradient for every weight. The size of the push is proportional to how wrong the prediction was: at $p = 0.9$ the output gradient would be only $-0.1$.
 
@@ -295,7 +305,7 @@ print(round(loss.item(), 2), round(z.grad.item(), 2))     # 1.61 -0.8  (loss -lo
 ### Weighted Binary Cross-Entropy
 
 $$
-L = -\big[w_+\, y \log p + w_-(1 - y)\log(1 - p)\big]
+L = -\big[w_+\thinspace y \log p + w_-(1 - y)\log(1 - p)\big]
 $$
 
 - Up-weight the rare class. A common starting point is $w_+ = N_{\text{neg}} / N_{\text{pos}}$, then tune it.
@@ -319,7 +329,7 @@ where $k$ is the true class.
 
 - The second form (**log-sum-exp**) is how it is computed stably.
 - **Sparse** categorical cross-entropy is the same loss with integer class labels instead of one-hot vectors.
-- With **label smoothing** $\varepsilon$, the target becomes $y_c = (1 - \varepsilon)\,\mathbb{1}[c = k] + \varepsilon / C$. The model is no longer trained toward perfectly confident predictions, which can improve generalization. It also changes the probability targets themselves, so the trained model's probabilities no longer estimate the true class probabilities and calibration can get better or worse. See [`regularization.md`](regularization.md#label-smoothing).
+- With **label smoothing** $\varepsilon$, the target becomes $y_c = (1 - \varepsilon)\thinspace\mathbb{1}[c = k] + \varepsilon / C$. The model is no longer trained toward perfectly confident predictions, which can improve generalization. It also changes the probability targets themselves, so the trained model's probabilities no longer estimate the true class probabilities and calibration can get better or worse. See [`regularization.md`](regularization.md#label-smoothing).
 
 ```python
 def log_softmax(z, dim=-1):
@@ -355,16 +365,16 @@ def focal_loss(z, y, alpha=0.25, gamma=2.0):
 
 ### Hinge Loss
 
-With label $y \in \{-1, +1\}$ and raw score $f(x)$:
+With label $y \in \lbrace-1, +1\rbrace$ and raw score $f(x)$:
 
 $$
-L = \max\big(0,\; 1 - y f(x)\big)
+L = \max\big(0,\thickspace 1 - y f(x)\big)
 $$
 
 - The loss of linear SVMs. It is zero once an example is on the correct side with margin at least 1, so only margin violators (the "support vectors") contribute gradient.
 - Produces scores, not calibrated probabilities.
 - **Squared hinge** $\max(0, 1 - yf(x))^2$ is differentiable and penalizes violations more strongly.
-- **Multi-class hinge** (Crammer–Singer): $\max\big(0,\; 1 + \max_{c \ne k} f_c - f_k\big)$.
+- **Multi-class hinge** (Crammer–Singer): $\max\big(0,\thickspace 1 + \max_{c \ne k} f_c - f_k\big)$.
 
 ```python
 def hinge_loss(score, y):
@@ -384,17 +394,17 @@ def multiclass_hinge_loss(scores, target):
 ### KL Divergence
 
 $$
-D_{\text{KL}}(P \,\|\, Q) = \sum_x P(x)\log\frac{P(x)}{Q(x)} = H(P, Q) - H(P)
+D_{\text{KL}}(P \thinspace\Vert\thinspace Q) = \sum_x P(x)\log\frac{P(x)}{Q(x)} = H(P, Q) - H(P)
 $$
 
 - Cross-entropy minus the target's own entropy. When $P$ is a fixed one-hot label, $H(P) = 0$ and minimizing KL is identical to minimizing cross-entropy.
 - KL matters when the target is itself a distribution, e.g. **knowledge distillation**, where a student matches the softened outputs of a teacher at temperature $T$:
 
 $$
-L = T^2 \cdot D_{\text{KL}}\Big(\mathrm{softmax}(z^{\text{teacher}}/T) \,\Big\|\, \mathrm{softmax}(z^{\text{student}}/T)\Big)
+L = T^2 \cdot D_{\text{KL}}\Big(\mathrm{softmax}(z^{\text{teacher}}/T) \thinspace\Big\Vert\thinspace \mathrm{softmax}(z^{\text{student}}/T)\Big)
 $$
 
-- Asymmetric: $D_{\text{KL}}(P\|Q) \neq D_{\text{KL}}(Q\|P)$. When fitting an approximation $Q$ to a target $P$, forward KL $D_{\text{KL}}(P\|Q)$ tends to favor covering all the regions where $P$ has mass, while reverse KL $D_{\text{KL}}(Q\|P)$ often favors concentrating on individual modes. These are tendencies in common approximation settings, not universal guarantees.
+- Asymmetric: $D_{\text{KL}}(P\Vert Q) \neq D_{\text{KL}}(Q\Vert P)$. When fitting an approximation $Q$ to a target $P$, forward KL $D_{\text{KL}}(P\Vert Q)$ tends to favor covering all the regions where $P$ has mass, while reverse KL $D_{\text{KL}}(Q\Vert P)$ often favors concentrating on individual modes. These are tendencies in common approximation settings, not universal guarantees.
 
 ```python
 def kl_divergence(log_p, log_q):
@@ -428,7 +438,7 @@ def brier_score(p, y):
 
 ### Why Cross-Entropy Instead of MSE for Classification?
 
-With a sigmoid output, the MSE (Brier) gradient with respect to the logit is $2(p - y)\,p(1 - p)$. When the model is confidently wrong, $p(1 - p) \approx 0$ and learning stalls. Cross-entropy's gradient $p - y$ has no such factor, so confidently wrong predictions get the largest updates.
+With a sigmoid output, the MSE (Brier) gradient with respect to the logit is $2(p - y)\thinspace p(1 - p)$. When the model is confidently wrong, $p(1 - p) \approx 0$ and learning stalls. Cross-entropy's gradient $p - y$ has no such factor, so confidently wrong predictions get the largest updates.
 
 ```python
 z = torch.tensor(-6.0, requires_grad=True)          # confidently wrong: p ≈ 0.0025 but y = 1
@@ -450,7 +460,7 @@ These losses shape an **embedding space** or a **ranking** rather than predict a
 For an embedding distance $d$ between two items and $y = 1$ if they are similar:
 
 $$
-L = y\, d^2 + (1 - y)\max(0,\; m - d)^2
+L = y\thinspace d^2 + (1 - y)\max(0,\thickspace m - d)^2
 $$
 
 Pulls similar pairs together and pushes dissimilar pairs apart until they are at least margin $m$ away.
@@ -468,7 +478,7 @@ def contrastive_loss(x1, x2, y, margin=1.0):
 ### Triplet Loss
 
 $$
-L = \max\big(0,\; d(a, p) - d(a, n) + \alpha\big)
+L = \max\big(0,\thickspace d(a, p) - d(a, n) + \alpha\big)
 $$
 
 - Anchor $a$ must be closer to positive $p$ than to negative $n$ by margin $\alpha$.
@@ -516,7 +526,7 @@ def info_nce(q, k, tau=0.1):
 | Loss | Formula | Used in |
 |---|---|---|
 | RankNet / BPR | $-\log \sigma(s_i - s_j)$ for $i$ preferred over $j$ | Recommenders, learning to rank |
-| Margin ranking | $\max(0,\; m - (s_i - s_j))$ | Retrieval |
+| Margin ranking | $\max(0,\thickspace m - (s_i - s_j))$ | Retrieval |
 | Bradley–Terry reward loss | $-\log\sigma\big(r(y_w) - r(y_l)\big)$ | Reward models for RLHF |
 | LambdaRank / ListNet | Weights pairs by their effect on NDCG / uses whole list | Search ranking |
 
@@ -571,7 +581,7 @@ def perplexity(token_logits, tokens):
 ### VAE: Evidence Lower Bound (ELBO)
 
 $$
-\mathcal{L}_{\text{VAE}} = \underbrace{-\,\mathbb{E}_{q(z\mid x)}\big[\log p(x \mid z)\big]}_{\text{reconstruction}} + \beta \cdot \underbrace{D_{\text{KL}}\big(q(z \mid x)\,\|\,p(z)\big)}_{\text{latent regularizer}}
+\mathcal{L}_{\text{VAE}} = \underbrace{-\thinspace\mathbb{E}_{q(z\mid x)}\big[\log p(x \mid z)\big]}_{\text{reconstruction}} + \beta \cdot \underbrace{D_{\text{KL}}\big(q(z \mid x)\thinspace\Vert\thinspace p(z)\big)}_{\text{latent regularizer}}
 $$
 
 - Minimize this (the negative ELBO). $\beta = 1$ is the standard VAE; $\beta > 1$ ($\beta$-VAE) encourages disentangled latents.
@@ -603,7 +613,7 @@ The generator uses $-\log D(G(z))$ rather than $\log(1 - D(G(z)))$ because the l
 **Wasserstein GAN (WGAN-GP):** the critic $D$ outputs an unbounded score and is kept approximately 1-Lipschitz with a gradient penalty:
 
 $$
-L_D = \mathbb{E}_{z}\big[D(G(z))\big] - \mathbb{E}_{x}\big[D(x)\big] + \lambda\,\mathbb{E}_{\hat{x}}\Big[\big(\lVert\nabla_{\hat{x}} D(\hat{x})\rVert_2 - 1\big)^2\Big], \qquad L_G = -\mathbb{E}_{z}\big[D(G(z))\big]
+L_D = \mathbb{E}_{z}\big[D(G(z))\big] - \mathbb{E}_{x}\big[D(x)\big] + \lambda\thinspace\mathbb{E}_{\hat{x}}\Big[\big(\lVert\nabla_{\hat{x}} D(\hat{x})\rVert_2 - 1\big)^2\Big], \qquad L_G = -\mathbb{E}_{z}\big[D(G(z))\big]
 $$
 
 The critic objective approximates the negative Wasserstein-1 (Earth Mover's) distance, while the gradient penalty *encourages* the critic to satisfy the 1-Lipschitz constraint rather than enforcing it exactly. This gives more informative gradients and more stable training than the original objective.
@@ -708,7 +718,7 @@ def giou_loss(pred, target, eps=1e-7):
 Generalizes Dice by weighting false positives and false negatives separately:
 
 $$
-L_{\text{Tversky}} = 1 - \frac{TP + \epsilon}{TP + \alpha\,FP + \beta\,FN + \epsilon}
+L_{\text{Tversky}} = 1 - \frac{TP + \epsilon}{TP + \alpha\thinspace FP + \beta\thinspace FN + \epsilon}
 $$
 
 with soft counts $TP = \sum_i p_i g_i$, $FP = \sum_i p_i (1 - g_i)$, and $FN = \sum_i (1 - p_i) g_i$.
@@ -805,7 +815,7 @@ def perceptual_loss(x_hat, x):
 
 **Similar names do not always mean identical objectives.** Framework implementations can differ in reduction, normalization, target format, and parameter conventions. Some examples from the table above:
 
-- PyTorch `MultiMarginLoss` is a multi-class hinge that *sums* over wrong classes, unlike the Crammer–Singer *max* form; Keras `Hinge` is the binary hinge with targets in $\{-1, +1\}$ (or $\{0, 1\}$, converted internally).
+- PyTorch `MultiMarginLoss` is a multi-class hinge that *sums* over wrong classes, unlike the Crammer–Singer *max* form; Keras `Hinge` is the binary hinge with targets in $\lbrace-1, +1\rbrace$ (or $\lbrace0, 1\rbrace$, converted internally).
 - Keras `CosineSimilarity` returns the negative cosine similarity of two vectors; PyTorch `CosineEmbeddingLoss` takes a $\pm 1$ label per pair and a margin for dissimilar pairs.
 - `HuberLoss` and `SmoothL1Loss` differ by a factor of $\delta$ (see section 1).
 - PyTorch `KLDivLoss` expects log-probabilities as input, and its default `reduction="mean"` averages over every element rather than per sample; use `reduction="batchmean"` for the mathematical KL.

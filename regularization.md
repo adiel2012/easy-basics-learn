@@ -5,7 +5,7 @@ Regularization is any change to a model or its training that is meant to reduce 
 Most explicit regularizers add a penalty to the training loss:
 
 $$
-J_{\text{reg}}(\theta) = \underbrace{J(\theta)}_{\text{data loss}} + \lambda\, \underbrace{R(\theta)}_{\text{complexity penalty}}
+J_{\text{reg}}(\theta) = \underbrace{J(\theta)}_{\text{data loss}} + \lambda\thinspace \underbrace{R(\theta)}_{\text{complexity penalty}}
 $$
 
 where $\lambda \ge 0$ controls the strength. Many of the most effective techniques in deep learning, however, are *implicit*: they change the data, the architecture, or the training procedure rather than the loss.
@@ -62,7 +62,7 @@ $$
 The gradient step becomes
 
 $$
-\theta \leftarrow \theta - \eta\big(\nabla J(\theta) + \lambda\theta\big) = \underbrace{(1 - \eta\lambda)\,\theta}_{\text{shrink}} - \eta\nabla J(\theta)
+\theta \leftarrow \theta - \eta\big(\nabla J(\theta) + \lambda\theta\big) = \underbrace{(1 - \eta\lambda)\thinspace\theta}_{\text{shrink}} - \eta\nabla J(\theta)
 $$
 
 so every step multiplies the weights by a factor slightly below 1. Hence the name **weight decay**.
@@ -79,7 +79,7 @@ For plain SGD, adding $\lambda\theta$ to the gradient and decaying the weights a
 **AdamW** fixes this by applying decay separately from the adaptive update:
 
 $$
-\theta \leftarrow \theta - \eta\left(\frac{\hat{m}_t}{\sqrt{\hat{v}_t} + \epsilon} + \lambda\,\theta\right)
+\theta \leftarrow \theta - \eta\left(\frac{\hat{m}_t}{\sqrt{\hat{v}_t} + \epsilon} + \lambda\thinspace\theta\right)
 $$
 
 Use **AdamW**, not Adam with an L2 term, when training with adaptive optimizers. Typical decay values are $0.01$–$0.1$ for transformers and around $5\times10^{-4}$ for SGD on CNNs.
@@ -94,7 +94,7 @@ $$
 - Not differentiable at zero. Solvers use coordinate descent or **proximal gradient** updates (soft-thresholding):
 
 $$
-\theta_j \leftarrow \mathrm{sign}(\tilde{\theta}_j)\,\max\big(|\tilde{\theta}_j| - \eta\lambda,\; 0\big)
+\theta_j \leftarrow \mathrm{sign}(\tilde{\theta}_j)\thinspace\max\big(|\tilde{\theta}_j| - \eta\lambda,\thickspace 0\big)
 $$
 
   where $\tilde{\theta}$ is the parameter after an ordinary gradient step. Plain SGD with an L1 term hovers around zero rather than landing exactly on it.
@@ -164,7 +164,7 @@ $$
 Replace one-hot targets with
 
 $$
-y_c = (1 - \varepsilon)\,\mathbb{1}[c = k] + \frac{\varepsilon}{C}
+y_c = (1 - \varepsilon)\thinspace\mathbb{1}[c = k] + \frac{\varepsilon}{C}
 $$
 
 - Keeps the model from driving logits to infinity to reach probability 1, which reduces overconfidence.
@@ -186,7 +186,7 @@ $$
 During training each unit is kept with probability $1 - p$ and zeroed otherwise. With **inverted dropout** (what frameworks implement), the kept units are scaled up so the expected activation is unchanged:
 
 $$
-\tilde{h}_i = \frac{m_i\, h_i}{1 - p}, \qquad m_i \sim \mathrm{Bernoulli}(1 - p)
+\tilde{h}_i = \frac{m_i\thinspace h_i}{1 - p}, \qquad m_i \sim \mathrm{Bernoulli}(1 - p)
 $$
 
 At inference dropout is turned off and no rescaling is needed. **Remember `model.eval()` in PyTorch.**
@@ -263,7 +263,7 @@ Rescales gradients when their norm exceeds a threshold. Its role is stability (p
 Maximum a posteriori (MAP) estimation minimizes
 
 $$
--\log p(\theta \mid \mathcal{D}) = \underbrace{-\log p(\mathcal{D} \mid \theta)}_{\text{data loss (NLL)}}\; \underbrace{-\log p(\theta)}_{\text{regularizer}} + \text{const}
+-\log p(\theta \mid \mathcal{D}) = \underbrace{-\log p(\mathcal{D} \mid \theta)}_{\text{data loss (NLL)}}\thickspace \underbrace{-\log p(\theta)}_{\text{regularizer}} + \text{const}
 $$
 
 so a regularizer is a **prior belief about the weights**:
@@ -412,7 +412,7 @@ early = callbacks.EarlyStopping(monitor="val_loss", patience=10,
 1. **Establish the model can learn.** With no regularization, confirm it can overfit a small subset of the data. If it cannot, the issue is the model or the pipeline, not regularization.
 2. **Train on the full data and read the gap** between training and validation curves.
 3. **Add one regularizer at a time**, starting with the cheapest and most reliable: early stopping, then weight decay and augmentation, then dropout.
-4. **Search strengths on a log scale**, e.g. weight decay in $\{10^{-5}, 10^{-4}, 10^{-3}, 10^{-2}, 10^{-1}\}$, then refine.
+4. **Search strengths on a log scale**, e.g. weight decay in $\lbrace10^{-5}, 10^{-4}, 10^{-3}, 10^{-2}, 10^{-1}\rbrace$, then refine.
 5. **Stop when validation error stops improving**, and confirm on a held-out test set that was never used for tuning.
 
 ### Pitfalls
