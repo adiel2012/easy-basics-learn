@@ -77,7 +77,7 @@ $$
 $$
 L_\delta(e) =
 \begin{cases}
-\tfrac{1}{2}e^2 & |e| \le \delta \\[2pt]
+\tfrac{1}{2}e^2 & |e| \le \delta \cr
 \delta\big(|e| - \tfrac{1}{2}\delta\big) & |e| > \delta
 \end{cases}
 \qquad
@@ -212,7 +212,7 @@ where $k$ is the true class.
 ### Focal Loss
 
 $$
-L = -\alpha_t (1 - p_t)^\gamma \log p_t, \qquad p_t = \begin{cases} p & y = 1 \\ 1 - p & y = 0 \end{cases}, \qquad \alpha_t = \begin{cases} \alpha & y = 1 \\ 1 - \alpha & y = 0 \end{cases}
+L = -\alpha_t (1 - p_t)^\gamma \log p_t, \qquad p_t = \begin{cases} p & y = 1 \cr 1 - p & y = 0 \end{cases}, \qquad \alpha_t = \begin{cases} \alpha & y = 1 \cr 1 - \alpha & y = 0 \end{cases}
 $$
 
 - $p_t$ is the probability assigned to the true class, and $\alpha_t$ balances the positive and negative classes.
