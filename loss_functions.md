@@ -43,9 +43,32 @@ The loss is where backpropagation starts: its derivative with respect to the net
 7. [Choosing a loss function](#7-choosing-a-loss-function)
 8. [Practical notes and pitfalls](#8-practical-notes-and-pitfalls)
 
-Notation: $y$ is the target, $\hat{y}$ the prediction, $e = y - \hat{y}$ the residual, $z$ a raw logit, $\sigma$ the sigmoid, and $p$ a predicted probability.
+### Notation
 
-Each loss below comes with a **from-scratch PyTorch implementation** built only from basic tensor operations (no `torch.nn` or `torch.nn.functional` losses), so you can see exactly how the formula turns into code; autograd supplies the gradients. The snippets assume `import math, torch` and return the mean over the batch. Two numerically stable helpers, `log_sigmoid` and `log_softmax`, are defined once in section 2 and reused after that.
+Each symbol keeps one meaning throughout the file:
+
+| Symbol | Meaning |
+|---|---|
+| $x$, $y$ | Input and target. Binary labels are $y \in \lbrace0, 1\rbrace$, except in hinge loss, which uses $y \in \lbrace-1, +1\rbrace$ |
+| $f$ | The model, $f(x; \theta)$. Losses that use its raw output directly as a score write $f(x)$, $f_c$ for class $c$, or $f_i$ for ranked item $i$ |
+| $\hat{y}$ | Prediction of a regression target, $\hat{y} = f(x)$ (also a predicted rate or mean). The Gaussian NLL calls it $\mu$ because the model predicts a variance as well |
+| $e = y - \hat{y}$ | Residual |
+| $z$ | Logit: an unbounded model output that becomes a probability through $\sigma$ or softmax. Section 4 is the one exception: there $z$ is a latent code (VAE) or noise input (GAN), the standard convention for generative models |
+| $\sigma(z) = 1/(1 + e^{-z})$ | The sigmoid. It never means a standard deviation; standard deviations are written $s$ |
+| $p$, $p_c$ | Predicted probability, and the probability of class $c$ |
+| $s^2$ | Predicted variance |
+| $C$, $c$, $k$ | Number of classes, a class index, and the true class |
+| $N$, $i$ | Number of examples (or pixels) and an example index |
+| $m$ | Margin (contrastive, triplet, ranking) |
+| $T$ | Temperature (distillation, InfoNCE) |
+| $\tau$ | Quantile level |
+| $\varepsilon$ | Small smoothing constant (label smoothing, Dice, Tversky) |
+| $\epsilon$ | Gaussian noise sample (diffusion, VAE reparameterization) |
+| $\theta$, $\lambda$ | Model parameters and a penalty weight |
+
+Hyperparameters that belong to a single loss keep their standard names from the literature and are defined where they appear: $\delta$ (Huber), $\alpha, \gamma$ (focal), $\alpha, \beta$ (Tversky), and $\beta$ ($\beta$-VAE, $\beta$-NLL).
+
+Each loss below comes with a **from-scratch PyTorch implementation** built only from basic tensor operations (no `torch.nn` or `torch.nn.functional` losses), so you can see exactly how the formula turns into code; autograd supplies the gradients. The snippets assume `import math, torch`, return the mean over the batch, and follow PyTorch's argument order: prediction first, target last. Names in code mirror the math: `y_hat` for $\hat{y}$, `y` for targets, `z` for logits, `p` for probabilities, `f` for raw scores, `target` for integer class indices, `log_var` for $\log s^2$, `T` for temperature, and `eps` for a small stabilizing constant. Two numerically stable helpers, `log_sigmoid` and `log_softmax`, are defined once in section 2 and reused after that.
 
 ---
 
@@ -100,14 +123,14 @@ $$
 - Continuously differentiable ($C^1$), but not twice differentiable at the transition points $e = \pm\delta$, where the second derivative jumps from 1 to 0.
 - The gradient with respect to the prediction is the negative **clipped** residual. Its magnitude is capped at $\delta$, so large errors cannot produce arbitrarily large gradients.
 - $\delta$ should be on the scale of a "normal" residual. A common choice is $\delta = 1$ on standardized targets.
-- **Smooth L1** (common in object detection) is Huber divided by $\delta$ (PyTorch calls the threshold `beta`). The two have different scaling conventions, so `HuberLoss(delta=d)` and `SmoothL1Loss(beta=d)` differ by a factor of $d$.
+- **Smooth L1** (common in object detection) is Huber divided by $\delta$ (PyTorch calls the threshold `beta`). The two have different scaling conventions, so `SmoothL1Loss(beta=δ)` equals `HuberLoss(delta=δ)` divided by $\delta$.
 
 ```python
 def huber_loss(y_hat, y, delta=1.0):
-    e = (y - y_hat).abs()
-    quadratic = 0.5 * e ** 2                     # |e| <= delta
-    linear = delta * (e - 0.5 * delta)           # |e| >  delta
-    return torch.where(e <= delta, quadratic, linear).mean()
+    abs_e = (y - y_hat).abs()
+    quadratic = 0.5 * abs_e ** 2                 # |e| <= delta
+    linear = delta * (abs_e - 0.5 * delta)       # |e| >  delta
+    return torch.where(abs_e <= delta, quadratic, linear).mean()
 
 def smooth_l1_loss(y_hat, y, beta=1.0):
     return huber_loss(y_hat, y, delta=beta) / beta    # Smooth L1 = Huber / delta
@@ -116,19 +139,19 @@ def smooth_l1_loss(y_hat, y, beta=1.0):
 ### Log-Cosh Loss
 
 $$
-L = \log\cosh(\hat{y} - y) \qquad \frac{\partial L}{\partial \hat{y}} = \tanh(\hat{y} - y)
+L = \log\cosh(e) \qquad \frac{\partial L}{\partial \hat{y}} = -\tanh(e)
 $$
 
 - Approximately $\tfrac{1}{2}e^2$ for small errors and $|e| - \log 2$ for large ones.
 - Like Huber but infinitely differentiable and with no $\delta$ to tune. Useful for second-order methods such as gradient-boosted trees.
 - Its transition scale is fixed at $|e| \approx 1$, so it behaves sensibly only when targets are on a sensible scale (standardize them).
-- **Optimal prediction:** the value $\hat{y}$ satisfying $\mathbb{E}[\tanh(\hat{y} - Y) \mid X = x] = 0$. This is a robust location estimate; it is generally neither the conditional mean nor the median, nor a fixed blend of the two.
+- **Optimal prediction:** the value $\hat{y}$ satisfying $\mathbb{E}[\tanh(y - \hat{y}) \mid x] = 0$. This is a robust location estimate; it is generally neither the conditional mean nor the median, nor a fixed blend of the two.
 
 ```python
 def log_cosh_loss(y_hat, y):
-    a = (y_hat - y).abs()
-    # log(cosh(a)) = a + log(1 + e^{-2a}) - log 2; torch.cosh(a) itself overflows for a > ~89
-    return (a + torch.log1p(torch.exp(-2 * a)) - math.log(2.0)).mean()
+    abs_e = (y - y_hat).abs()
+    # log(cosh(e)) = |e| + log(1 + exp(-2|e|)) - log 2; torch.cosh itself overflows for |e| > ~89
+    return (abs_e + torch.log1p(torch.exp(-2 * abs_e)) - math.log(2.0)).mean()
 ```
 
 ### Quantile (Pinball) Loss
@@ -150,7 +173,7 @@ def quantile_loss(y_hat, y, tau=0.5):
 
 ### Gaussian Negative Log-Likelihood (heteroscedastic regression)
 
-Plain MSE gives one prediction per input and assumes the noise is the same everywhere. Here the network predicts **two numbers for every input $x$**: a mean $\mu(x)$ (the prediction) and a variance $s^2(x)$ (how uncertain that prediction is):
+Plain MSE gives one prediction per input and assumes the noise is the same everywhere. Here the network predicts **two numbers for every input $x$**: a mean $\mu(x)$ (the prediction, in the role of $\hat{y}$) and a variance $s^2(x)$ (how uncertain that prediction is):
 
 $$
 L = \frac{1}{2}\left(\log s^2(x) + \frac{\big(y - \mu(x)\big)^2}{s^2(x)}\right)
@@ -158,7 +181,7 @@ $$
 
 **What gets trained.** $\mu$ and $s^2$ are not parameters. They are outputs of the network, recomputed for every example, typically from two output heads on a shared body. Training updates the network's weights, and the loss reaches them by backpropagating through both outputs. There is no target for $s^2$: the network learns uncertainty only from how far $\mu$ lands from $y$.
 
-**What each output learns** (writing $v = \log s^2$, which is what the network actually outputs):
+**What each output learns** (writing $v = \log s^2$, which is what the network actually outputs; `log_var` in code):
 
 $$
 \frac{\partial L}{\partial \mu} = -\frac{y - \mu}{s^2} \qquad \frac{\partial L}{\partial v} = \frac{1}{2}\left(1 - \frac{(y - \mu)^2}{s^2}\right)
@@ -201,7 +224,7 @@ loss.backward()                             # gradients reach the body and both 
 | Poisson | $\hat{y} - y\log\hat{y}$ | Counts (arrivals, clicks) |
 | Mean Squared Log Error | $\big(\log(1 + y) - \log(1 + \hat{y})\big)^2$ | Targets spanning orders of magnitude; penalizes relative error |
 | MAPE | $\lvert e \rvert / \lvert y \rvert$ | Business reporting; undefined at $y = 0$, see below |
-| Tweedie | Family between Poisson and Gamma | Zero-inflated positive targets (insurance claims, sales) |
+| Tweedie | Family between Poisson and Gamma, with power $1 < \rho < 2$ | Zero-inflated positive targets (insurance claims, sales) |
 
 **Poisson details.** The full Poisson negative log-likelihood is
 
@@ -214,9 +237,9 @@ where $\hat{y} > 0$ is the predicted rate and $y$ is a nonnegative integer count
 **Why MAPE is tricky.** MAPE weights each error inversely by the size of the target, so a miss of 5 on a target of 10 counts as much as a miss of 500 on a target of 1000. Small actual values can therefore dominate the metric. Over-predictions can produce arbitrarily large percentage errors while under-predictions are capped at 100% (for positive predictions), so optimizing MAPE tends to encourage systematic under-prediction.
 
 ```python
-def poisson_nll_loss(log_rate, y):
-    # predict the log-rate so the rate exp(log_rate) is always positive; log(y!) is dropped
-    return (log_rate.exp() - y * log_rate).mean()
+def poisson_nll_loss(log_y_hat, y):
+    # predict the log-rate so the rate y_hat = exp(log_y_hat) is always positive; log(y!) is dropped
+    return (log_y_hat.exp() - y * log_y_hat).mean()
 
 def msle_loss(y_hat, y):
     return ((torch.log1p(y) - torch.log1p(y_hat)) ** 2).mean()
@@ -225,10 +248,10 @@ def mape(y_hat, y, eps=1e-8):
     # fraction, not percent; eps only avoids division by zero, MAPE is still meaningless at y = 0
     return ((y - y_hat).abs() / y.abs().clamp_min(eps)).mean()
 
-def tweedie_loss(log_mu, y, p=1.5):
-    # Tweedie NLL for power 1 < p < 2, up to terms that depend only on y
-    return (-y * torch.exp((1 - p) * log_mu) / (1 - p)
-            + torch.exp((2 - p) * log_mu) / (2 - p)).mean()
+def tweedie_loss(log_y_hat, y, rho=1.5):
+    # Tweedie NLL for power 1 < rho < 2, up to terms that depend only on y
+    return (-y * torch.exp((1 - rho) * log_y_hat) / (1 - rho)
+            + torch.exp((2 - rho) * log_y_hat) / (2 - rho)).mean()
 ```
 
 ### Regression Loss Comparison
@@ -319,7 +342,7 @@ def weighted_bce_with_logits(z, y, w_pos=1.0, w_neg=1.0):
 
 ### Categorical Cross-Entropy
 
-With logits $z \in \mathbb{R}^C$, softmax probabilities $p_c = e^{z_c} / \sum_k e^{z_k}$, and one-hot target $y$:
+With logits $z \in \mathbb{R}^C$, softmax probabilities $p_c = e^{z_c} / \sum_{j=1}^{C} e^{z_j}$, and one-hot target $y$:
 
 $$
 L = -\sum_{c=1}^{C} y_c \log p_c = -z_k + \log\sum_{c} e^{z_c} \qquad \frac{\partial L}{\partial z_c} = p_c - y_c
@@ -352,7 +375,7 @@ Here $\mathbb{1}[c = k]$ is 1 for the true class and 0 for the others. With $C =
 ```python
 def log_softmax(z, dim=-1):
     z = z - z.max(dim=dim, keepdim=True).values           # shift so the largest logit is 0
-    return z - z.exp().sum(dim=dim, keepdim=True).log()    # z_c - log Σ_k e^{z_k}
+    return z - z.exp().sum(dim=dim, keepdim=True).log()    # z_c - log Σ_j e^{z_j}
 
 def cross_entropy(z, target, label_smoothing=0.0):
     # z: (N, C) logits, target: (N,) int64 class indices
@@ -415,17 +438,17 @@ The loss asks for more than just the right sign. Every example must be correct b
 - **Multi-class hinge** (Crammer–Singer): $\max\big(0,\ 1 + \max_{c \ne k} f_c - f_k\big)$.
 
 ```python
-def hinge_loss(score, y):
-    # y in {-1, +1}
-    return (1 - y * score).clamp_min(0).mean()
+def hinge_loss(f, y):
+    # f: raw scores f(x), y in {-1, +1}
+    return (1 - y * f).clamp_min(0).mean()
 
-def squared_hinge_loss(score, y):
-    return (1 - y * score).clamp_min(0).pow(2).mean()
+def squared_hinge_loss(f, y):
+    return (1 - y * f).clamp_min(0).pow(2).mean()
 
-def multiclass_hinge_loss(scores, target):
-    # Crammer–Singer; scores: (N, C), target: (N,) int64
-    f_k = scores.gather(1, target.unsqueeze(1)).squeeze(1)                # true-class score
-    rivals = scores.scatter(1, target.unsqueeze(1), float("-inf"))        # hide the true class
+def multiclass_hinge_loss(f, target):
+    # Crammer–Singer; f: (N, C) raw scores, target: (N,) int64
+    f_k = f.gather(1, target.unsqueeze(1)).squeeze(1)                     # true-class score
+    rivals = f.scatter(1, target.unsqueeze(1), float("-inf"))             # hide the true class
     return (1 + rivals.max(dim=1).values - f_k).clamp_min(0).mean()
 ```
 
@@ -449,9 +472,9 @@ def kl_divergence(log_p, log_q):
     # D_KL(P || Q) from log-probabilities: sum over classes, mean over the batch
     return (log_p.exp() * (log_p - log_q)).sum(dim=-1).mean()
 
-def distillation_loss(student_logits, teacher_logits, T=4.0):
-    log_p = log_softmax(teacher_logits / T)     # target P: softened teacher
-    log_q = log_softmax(student_logits / T)     # approximation Q: softened student
+def distillation_loss(z_student, z_teacher, T=4.0):
+    log_p = log_softmax(z_teacher / T)          # target P: softened teacher
+    log_q = log_softmax(z_student / T)          # approximation Q: softened student
     return T ** 2 * kl_divergence(log_p, log_q)
 ```
 
@@ -491,11 +514,11 @@ print(torch.autograd.grad(ce, z)[0].item())         # ≈ -0.9975: large correct
 
 ## 3. Ranking, Metric, and Contrastive Losses
 
-These losses shape an **embedding space** or a **ranking** rather than predict a label.
+These losses shape an **embedding space** or a **ranking** rather than predict a label. Here $x^a$ is an anchor item, $x^+$ a positive (an item that should be close to it), and $x^-$ a negative (one that should be far). Distances $d$ and similarities $\mathrm{sim}$ are computed between the items' embeddings.
 
 ### Contrastive (Pairwise) Loss
 
-For an embedding distance $d$ between two items and $y = 1$ if they are similar:
+For two items $x_1, x_2$ with embedding distance $d = d(x_1, x_2)$, and $y = 1$ if they are similar:
 
 $$
 L = y\thinspace d^2 + (1 - y)\max(0,\ m - d)^2
@@ -516,10 +539,10 @@ def contrastive_loss(x1, x2, y, margin=1.0):
 ### Triplet Loss
 
 $$
-L = \max\big(0,\ d(a, p) - d(a, n) + \alpha\big)
+L = \max\big(0,\ d(x^a, x^+) - d(x^a, x^-) + m\big)
 $$
 
-- Anchor $a$ must be closer to positive $p$ than to negative $n$ by margin $\alpha$.
+- The anchor $x^a$ must be closer to the positive $x^+$ than to the negative $x^-$ by margin $m$.
 - **Mining matters more than the formula.** Random triplets are mostly already satisfied and give zero gradient. Use semi-hard or batch-hard negative mining.
 
 ```python
@@ -528,10 +551,11 @@ def triplet_loss(anchor, positive, negative, margin=1.0):
     d_an = euclidean(anchor, negative)
     return (d_ap - d_an + margin).clamp_min(0).mean()
 
-def batch_hard_triplet_loss(emb, labels, margin=0.3):
-    # every item is an anchor; pick its farthest positive and closest negative in the batch
-    d = euclidean(emb[:, None, :], emb[None, :, :])                        # (N, N)
-    same = labels[:, None] == labels[None, :]
+def batch_hard_triplet_loss(x, target, margin=0.3):
+    # x: (N, D) embeddings, target: (N,) int64 identities; every item is an anchor,
+    # paired with its farthest positive and its closest negative in the batch
+    d = euclidean(x[:, None, :], x[None, :, :])                            # (N, N)
+    same = target[:, None] == target[None, :]
     hardest_pos = d.masked_fill(~same, 0.0).max(dim=1).values
     hardest_neg = d.masked_fill(same, float("inf")).min(dim=1).values
     return (hardest_pos - hardest_neg + margin).clamp_min(0).mean()
@@ -539,52 +563,56 @@ def batch_hard_triplet_loss(emb, labels, margin=0.3):
 
 ### InfoNCE / NT-Xent (Contrastive Self-Supervised Learning)
 
-For an anchor $q$, one positive $k^+$, and a batch of negatives, with similarity $s(\cdot,\cdot)$ (usually cosine) and temperature $\tau$:
+For an anchor $x^a$, one positive $x^+$, and a batch of negatives, with similarity $\mathrm{sim}(\cdot,\cdot)$ (usually cosine) and temperature $T$:
 
 $$
-L = -\log \frac{\exp\big(s(q, k^+)/\tau\big)}{\sum_{j} \exp\big(s(q, k_j)/\tau\big)}
+L = -\log \frac{\exp\big(\mathrm{sim}(x^a, x^+)/T\big)}{\sum_{j} \exp\big(\mathrm{sim}(x^a, x_j)/T\big)}
 $$
 
-- Cross-entropy where the "correct class" is the positive pair. Used in SimCLR, MoCo, and CLIP.
-- The number and quality of negatives, along with the temperature $\tau$ (often 0.05–0.2), strongly affect the learned representations. Large batch sizes help because every other item in the batch serves as a negative.
+- The sum runs over the positive and all the negatives, so this is cross-entropy where the "correct class" is the positive pair. Used in SimCLR, MoCo, and CLIP.
+- The number and quality of negatives, along with the temperature $T$ (often 0.05–0.2), strongly affect the learned representations. Large batch sizes help because every other item in the batch serves as a negative.
 
 ```python
-def info_nce(q, k, tau=0.1):
-    # q, k: (N, D); row i of k is the positive for row i of q, all other rows are negatives
-    q = q / q.norm(dim=1, keepdim=True)
-    k = k / k.norm(dim=1, keepdim=True)
-    logits = q @ k.T / tau                         # (N, N) cosine similarities / temperature
-    return -log_softmax(logits).diagonal().mean()  # cross-entropy with the diagonal as the class
+def info_nce(anchor, positive, T=0.1):
+    # anchor, positive: (N, D); row i of positive pairs with row i of anchor, other rows are negatives
+    anchor = anchor / anchor.norm(dim=1, keepdim=True)
+    positive = positive / positive.norm(dim=1, keepdim=True)
+    z = anchor @ positive.t() / T                  # (N, N) cosine similarities / temperature
+    return -log_softmax(z).diagonal().mean()       # cross-entropy with the diagonal as the class
 
 # CLIP-style symmetric version: 0.5 * (info_nce(img, txt) + info_nce(txt, img))
 ```
 
 ### Pairwise Ranking Losses
 
+The model gives each item a raw score $f_i$ and is trained so that preferred items score higher.
+
 | Loss | Formula | Used in |
 |---|---|---|
-| RankNet / BPR | $-\log \sigma(s_i - s_j)$ for $i$ preferred over $j$ | Recommenders, learning to rank |
-| Margin ranking | $\max(0,\ m - (s_i - s_j))$ | Retrieval |
-| Bradley–Terry reward loss | $-\log\sigma\big(r(y_w) - r(y_l)\big)$ | Reward models for RLHF |
+| RankNet / BPR | $-\log \sigma(f_i - f_j)$ for $i$ preferred over $j$ | Recommenders, learning to rank |
+| Margin ranking | $\max(0,\ m - (f_i - f_j))$ | Retrieval |
+| Bradley–Terry reward loss | $-\log\sigma\big(r(y_w) - r(y_l)\big)$, with reward score $r$ for preferred response $y_w$ and rejected $y_l$ | Reward models for RLHF |
 | LambdaRank / ListNet | Weights pairs by their effect on NDCG / uses whole list | Search ranking |
 
 ```python
-def ranknet_loss(s_i, s_j):
+def ranknet_loss(f_i, f_j):
     # item i preferred over j; same formula as BPR and the Bradley–Terry reward loss
-    return -log_sigmoid(s_i - s_j).mean()
+    return -log_sigmoid(f_i - f_j).mean()
 
-def margin_ranking_loss(s_i, s_j, margin=1.0):
-    return (margin - (s_i - s_j)).clamp_min(0).mean()
+def margin_ranking_loss(f_i, f_j, margin=1.0):
+    return (margin - (f_i - f_j)).clamp_min(0).mean()
 
-def listnet_loss(scores, relevance):
-    # scores, relevance: (num_queries, list_len); cross-entropy between top-1 distributions
-    target = log_softmax(relevance).exp()
-    return -(target * log_softmax(scores)).sum(dim=1).mean()
+def listnet_loss(f, relevance):
+    # f, relevance: (num_queries, list_len); cross-entropy between top-1 distributions
+    p_target = log_softmax(relevance).exp()
+    return -(p_target * log_softmax(f)).sum(dim=1).mean()
 ```
 
 ---
 
 ## 4. Generative and Probabilistic Losses
+
+In this section $z$ is a latent code (VAE) or a noise input (GAN), not a logit, following the standard convention for generative models.
 
 ### Negative Log-Likelihood (NLL)
 
@@ -610,9 +638,9 @@ def nll_loss(log_probs, target):
     # log_probs: (N, C) log-probabilities, target: (N,) int64; cross_entropy = nll_loss(log_softmax(z))
     return -log_probs.gather(1, target.unsqueeze(1)).mean()
 
-def perplexity(token_logits, tokens):
-    # token_logits: (N, T, V) next-token logits, tokens: (N, T) int64
-    nll = -log_softmax(token_logits).gather(2, tokens.unsqueeze(2)).mean()
+def perplexity(z, target):
+    # z: (N, L, V) next-token logits, target: (N, L) int64 next tokens
+    nll = -log_softmax(z).gather(2, target.unsqueeze(2)).mean()
     return nll.exp()
 ```
 
@@ -623,11 +651,11 @@ $$
 $$
 
 - Minimize this (the negative ELBO). $\beta = 1$ is the standard VAE; $\beta > 1$ ($\beta$-VAE) encourages disentangled latents.
-- For a Gaussian encoder and standard normal prior, the KL term has a closed form: $\tfrac{1}{2}\sum_j\big(\mu_j^2 + \sigma_j^2 - \log\sigma_j^2 - 1\big)$.
+- For a Gaussian encoder and standard normal prior, the KL term has a closed form: $\tfrac{1}{2}\sum_j\big(\mu_j^2 + s_j^2 - \log s_j^2 - 1\big)$, where $\mu_j$ and $s_j^2$ are the encoder's mean and variance for latent dimension $j$.
 
 ```python
 def reparameterize(mu, log_var):
-    # z = mu + sigma * eps keeps sampling differentiable with respect to mu and log_var
+    # z = mu + s * epsilon with epsilon ~ N(0, 1) keeps sampling differentiable in mu and log_var
     return mu + (0.5 * log_var).exp() * torch.randn_like(mu)
 
 def vae_loss(x_logits, x, mu, log_var, beta=1.0):
@@ -651,7 +679,7 @@ The generator uses $-\log D(G(z))$ rather than $\log(1 - D(G(z)))$ because the l
 **Wasserstein GAN (WGAN-GP):** the critic $D$ outputs an unbounded score and is kept approximately 1-Lipschitz with a gradient penalty:
 
 $$
-L_D = \mathbb{E}_{z}\big[D(G(z))\big] - \mathbb{E}_{x}\big[D(x)\big] + \lambda\thinspace\mathbb{E}_{\hat{x}}\Big[\big(\lVert\nabla_{\hat{x}} D(\hat{x})\rVert_2 - 1\big)^2\Big], \qquad L_G = -\mathbb{E}_{z}\big[D(G(z))\big]
+L_D = \mathbb{E}_{z}\big[D(G(z))\big] - \mathbb{E}_{x}\big[D(x)\big] + \lambda_{\text{GP}}\thinspace\mathbb{E}_{\hat{x}}\Big[\big(\lVert\nabla_{\hat{x}} D(\hat{x})\rVert_2 - 1\big)^2\Big], \qquad L_G = -\mathbb{E}_{z}\big[D(G(z))\big]
 $$
 
 The critic objective approximates the negative Wasserstein-1 (Earth Mover's) distance, while the gradient penalty *encourages* the critic to satisfy the 1-Lipschitz constraint rather than enforcing it exactly. This gives more informative gradients and more stable training than the original objective.
@@ -666,13 +694,13 @@ def gan_g_loss(fake_logits):
     return -log_sigmoid(fake_logits).mean()      # non-saturating: -log D(G(z))
 
 # WGAN-GP
-def wgan_gp_d_loss(critic, real, fake, lam=10.0):
+def wgan_gp_d_loss(critic, real, fake, lam_gp=10.0):
     fake = fake.detach()
-    eps = torch.rand(real.size(0), *[1] * (real.dim() - 1), device=real.device)
-    x_hat = (eps * real + (1 - eps) * fake).requires_grad_(True)     # random interpolates
+    u = torch.rand(real.size(0), *[1] * (real.dim() - 1), device=real.device)
+    x_hat = (u * real + (1 - u) * fake).requires_grad_(True)         # random interpolates
     grad = torch.autograd.grad(critic(x_hat).sum(), x_hat, create_graph=True)[0]
     penalty = ((grad.flatten(1).norm(dim=1) - 1) ** 2).mean()
-    return critic(fake).mean() - critic(real).mean() + lam * penalty
+    return critic(fake).mean() - critic(real).mean() + lam_gp * penalty
 
 def wgan_g_loss(critic, fake):
     return -critic(fake).mean()
@@ -692,12 +720,12 @@ This is plain MSE, derived from a weighted variational bound.
 betas = torch.linspace(1e-4, 0.02, 1000)            # linear noise schedule (DDPM)
 alpha_bar = torch.cumprod(1 - betas, dim=0)
 
-def diffusion_loss(eps_model, x0, alpha_bar):
+def diffusion_loss(noise_model, x0, alpha_bar):
     t = torch.randint(0, len(alpha_bar), (x0.size(0),), device=x0.device)
     a = alpha_bar[t].view(-1, *[1] * (x0.dim() - 1))
     noise = torch.randn_like(x0)
     x_t = a.sqrt() * x0 + (1 - a).sqrt() * noise      # sample q(x_t | x_0) in one step
-    return ((noise - eps_model(x_t, t)) ** 2).mean()
+    return ((noise - noise_model(x_t, t)) ** 2).mean()
 ```
 
 ---
@@ -707,47 +735,47 @@ def diffusion_loss(eps_model, x0, alpha_bar):
 ### Dice Loss
 
 $$
-L = 1 - \frac{2\sum_i p_i g_i + \epsilon}{\sum_i p_i + \sum_i g_i + \epsilon}
+L = 1 - \frac{2\sum_i p_i y_i + \varepsilon}{\sum_i p_i + \sum_i y_i + \varepsilon}
 $$
 
-- $p_i$ are predicted probabilities and $g_i$ ground-truth labels per pixel; $\epsilon$ prevents division by zero.
+- $p_i$ are predicted probabilities and $y_i$ the ground-truth labels per pixel; $\varepsilon$ prevents division by zero.
 - Measures overlap directly, so it is insensitive to how many background pixels there are. Useful when the object is small.
 - Often combined with cross-entropy (`CE + Dice`) because Dice alone can give unstable gradients.
-- **Per-image vs. per-batch.** Dice can be computed separately for each image and then averaged, or once over all pixels in the batch. These are different objectives: per-image Dice gives every image equal weight (including images with tiny objects), while batch Dice is dominated by images with large objects. The PyTorch example in section 6 uses per-image Dice.
-- **The smoothing constant matters.** $\epsilon$ makes empty masks well defined (an empty prediction on an empty mask scores a perfect 1), but its value also shifts the loss and gradients. For small objects, a large $\epsilon$ such as 1.0 can noticeably soften the penalty for missing them.
+- **Per-image vs. per-batch.** Dice can be computed separately for each image and then averaged, or once over all pixels in the batch. These are different objectives: per-image Dice gives every image equal weight (including images with tiny objects), while batch Dice is dominated by images with large objects. The snippet below computes per-image Dice.
+- **The smoothing constant matters.** $\varepsilon$ makes empty masks well defined (an empty prediction on an empty mask scores a perfect 1), but its value also shifts the loss and gradients. For small objects, a large $\varepsilon$ such as 1.0 can noticeably soften the penalty for missing them.
 
 ```python
-def dice_loss(logits, target, eps=1.0):
-    # per-image soft Dice for binary segmentation; logits, target: (N, ...)
-    p = log_sigmoid(logits).exp().flatten(1)
-    g = target.flatten(1)
-    inter = (p * g).sum(1)
-    return 1 - ((2 * inter + eps) / (p.sum(1) + g.sum(1) + eps)).mean()
+def dice_loss(z, y, eps=1.0):
+    # per-image soft Dice for binary segmentation; z (logits) and y (0/1 mask): (N, ...)
+    p = log_sigmoid(z).exp().flatten(1)
+    y = y.flatten(1)
+    inter = (p * y).sum(1)
+    return 1 - ((2 * inter + eps) / (p.sum(1) + y.sum(1) + eps)).mean()
 ```
 
 ### IoU (Jaccard) and Box-Regression Losses
 
-- **Soft IoU loss:** $1 - \frac{\sum p_i g_i}{\sum p_i + \sum g_i - \sum p_i g_i}$.
+- **Soft IoU loss:** $1 - \frac{\sum p_i y_i}{\sum p_i + \sum y_i - \sum p_i y_i}$.
 - **GIoU, DIoU, CIoU:** variants for bounding boxes that still give gradients when boxes do not overlap and also account for center distance and aspect ratio.
 
 ```python
-def soft_iou_loss(logits, target, eps=1e-6):
-    p = log_sigmoid(logits).exp().flatten(1)
-    g = target.flatten(1)
-    inter = (p * g).sum(1)
-    union = p.sum(1) + g.sum(1) - inter
+def soft_iou_loss(z, y, eps=1e-6):
+    p = log_sigmoid(z).exp().flatten(1)
+    y = y.flatten(1)
+    inter = (p * y).sum(1)
+    union = p.sum(1) + y.sum(1) - inter
     return 1 - ((inter + eps) / (union + eps)).mean()
 
-def giou_loss(pred, target, eps=1e-7):
-    # boxes: (N, 4) as (x1, y1, x2, y2)
+def giou_loss(y_hat, y, eps=1e-7):
+    # predicted and true boxes: (N, 4) as (left, top, right, bottom)
     def area(b):
         return (b[:, 2] - b[:, 0]) * (b[:, 3] - b[:, 1])
-    inter = (torch.minimum(pred[:, 2:], target[:, 2:])
-             - torch.maximum(pred[:, :2], target[:, :2])).clamp_min(0).prod(dim=1)
-    union = area(pred) + area(target) - inter
+    inter = (torch.minimum(y_hat[:, 2:], y[:, 2:])
+             - torch.maximum(y_hat[:, :2], y[:, :2])).clamp_min(0).prod(dim=1)
+    union = area(y_hat) + area(y) - inter
     iou = inter / (union + eps)
-    enclose = (torch.maximum(pred[:, 2:], target[:, 2:])
-               - torch.minimum(pred[:, :2], target[:, :2])).prod(dim=1)   # smallest enclosing box
+    enclose = (torch.maximum(y_hat[:, 2:], y[:, 2:])
+               - torch.minimum(y_hat[:, :2], y[:, :2])).prod(dim=1)       # smallest enclosing box
     return (1 - iou + (enclose - union) / (enclose + eps)).mean()
 ```
 
@@ -756,21 +784,21 @@ def giou_loss(pred, target, eps=1e-7):
 Generalizes Dice by weighting false positives and false negatives separately:
 
 $$
-L_{\text{Tversky}} = 1 - \frac{TP + \epsilon}{TP + \alpha\thinspace FP + \beta\thinspace FN + \epsilon}
+L_{\text{Tversky}} = 1 - \frac{TP + \varepsilon}{TP + \alpha\thinspace FP + \beta\thinspace FN + \varepsilon}
 $$
 
-with soft counts $TP = \sum_i p_i g_i$, $FP = \sum_i p_i (1 - g_i)$, and $FN = \sum_i (1 - p_i) g_i$.
+with soft counts $TP = \sum_i p_i y_i$, $FP = \sum_i p_i (1 - y_i)$, and $FN = \sum_i (1 - p_i) y_i$.
 
 - $\alpha = \beta = 0.5$ recovers Dice; $\alpha = \beta = 1$ gives soft IoU.
 - $\beta > \alpha$ penalizes missed foreground more than false alarms, trading precision for recall. This helps when objects are small and easy to miss (e.g. lesions); $\alpha = 0.3, \beta = 0.7$ is a common starting point.
 
 ```python
-def tversky_loss(logits, target, alpha=0.3, beta=0.7, eps=1.0):
-    p = log_sigmoid(logits).exp().flatten(1)
-    g = target.flatten(1)
-    tp = (p * g).sum(1)
-    fp = (p * (1 - g)).sum(1)
-    fn = ((1 - p) * g).sum(1)
+def tversky_loss(z, y, alpha=0.3, beta=0.7, eps=1.0):
+    p = log_sigmoid(z).exp().flatten(1)
+    y = y.flatten(1)
+    tp = (p * y).sum(1)
+    fp = (p * (1 - y)).sum(1)
+    fn = ((1 - p) * y).sum(1)
     return 1 - ((tp + eps) / (tp + alpha * fp + beta * fn + eps)).mean()
 ```
 
@@ -779,23 +807,23 @@ def tversky_loss(logits, target, alpha=0.3, beta=0.7, eps=1.0):
 Connectionist Temporal Classification sums the probability of every alignment between an input sequence and a shorter label sequence. Used for speech recognition and handwriting/OCR when frame-level alignments are unknown.
 
 ```python
-def ctc_loss(log_probs, labels, blank=0):
-    # one sequence: log_probs (T, C) from log_softmax, labels (L,) int64 without blanks
-    ext = torch.full((2 * len(labels) + 1,), blank, dtype=torch.long)
-    ext[1::2] = labels                                   # blank, l1, blank, l2, ..., blank
+def ctc_loss(log_probs, target, blank=0):
+    # one sequence: log_probs (num_frames, C) from log_softmax, target (num_labels,) int64, no blanks
+    ext = torch.full((2 * len(target) + 1,), blank, dtype=torch.long)
+    ext[1::2] = target                                   # blank, l1, blank, l2, ..., blank
     S = len(ext)
     # a path may jump two states (skip a blank) unless the two labels are equal
     can_skip = torch.zeros(S, dtype=torch.bool)
     can_skip[2:] = (ext[2:] != blank) & (ext[2:] != ext[:-2])
     NEG = -1e30                                          # finite "log 0", so gradients stay finite
-    alpha = torch.full((S,), NEG)
-    alpha[:2] = log_probs[0, ext[:2]]                    # start with a blank or the first label
+    log_alpha = torch.full((S,), NEG)                    # log forward variables, one per state
+    log_alpha[:2] = log_probs[0, ext[:2]]                # start with a blank or the first label
     for t in range(1, log_probs.size(0)):
-        stay = alpha
-        step = torch.cat([torch.full((1,), NEG), alpha[:-1]])
-        skip = torch.where(can_skip, torch.cat([torch.full((2,), NEG), alpha[:-2]]), NEG)
-        alpha = torch.logsumexp(torch.stack([stay, step, skip]), dim=0) + log_probs[t, ext]
-    return -torch.logsumexp(alpha[-2:], dim=0)           # end on the last label or the final blank
+        stay = log_alpha
+        step = torch.cat([torch.full((1,), NEG), log_alpha[:-1]])
+        skip = torch.where(can_skip, torch.cat([torch.full((2,), NEG), log_alpha[:-2]]), NEG)
+        log_alpha = torch.logsumexp(torch.stack([stay, step, skip]), dim=0) + log_probs[t, ext]
+    return -torch.logsumexp(log_alpha[-2:], dim=0)       # end on the last label or the final blank
 
 # for a batch, average ctc_loss over sequences; nn.CTCLoss does the same thing vectorized
 ```
@@ -823,7 +851,7 @@ def perceptual_loss(x_hat, x):
     # x_hat, x: (N, 3, H, W) images normalized with the ImageNet mean and std
     with torch.no_grad():
         target_feats = vgg_features(x)
-    return sum(((f_hat - f) ** 2).mean() for f_hat, f in zip(vgg_features(x_hat), target_feats))
+    return sum(((feat_hat - feat) ** 2).mean() for feat_hat, feat in zip(vgg_features(x_hat), target_feats))
 ```
 
 ---
@@ -860,41 +888,31 @@ def perceptual_loss(x_hat, x):
 
 Check the documentation before swapping one framework's loss for another's.
 
-### Minimal PyTorch Examples
+### Built-in Equivalents
+
+The same losses through PyTorch's built-ins, using the variable names from the snippets above:
 
 ```python
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-# Multi-class classification with label smoothing
-criterion = nn.CrossEntropyLoss(label_smoothing=0.1)
-loss = criterion(logits, targets)             # logits: (N, C), targets: (N,) int64
+# Multi-class classification with label smoothing; z: (N, C), target: (N,) int64
+loss = nn.CrossEntropyLoss(label_smoothing=0.1)(z, target)
 
-# Imbalanced binary classification
-pos_weight = torch.tensor([n_neg / n_pos])
-criterion = nn.BCEWithLogitsLoss(pos_weight=pos_weight)
-loss = criterion(logits.squeeze(-1), targets.float())
+# Imbalanced binary classification; z, y: (N,)
+loss = nn.BCEWithLogitsLoss(pos_weight=torch.tensor(n_neg / n_pos))(z, y.float())
 
-# Quantile loss
-def quantile_loss(pred, target, tau):
-    e = target - pred
-    return torch.mean(torch.maximum(tau * e, (tau - 1) * e))
+# Huber, and Gaussian NLL (which takes the variance itself, not log_var)
+loss = nn.HuberLoss(delta=1.0)(y_hat, y)
+loss = nn.GaussianNLLLoss()(mu, y, log_var.exp())
 
-# Dice loss (binary segmentation)
-def dice_loss(logits, target, eps=1.0):
-    p = torch.sigmoid(logits).flatten(1)
-    g = target.flatten(1)
-    inter = (p * g).sum(1)
-    return 1 - ((2 * inter + eps) / (p.sum(1) + g.sum(1) + eps)).mean()
-
-# InfoNCE between two batches of paired embeddings
-def info_nce(q, k, tau=0.1):
-    q, k = F.normalize(q, dim=1), F.normalize(k, dim=1)
-    logits = q @ k.T / tau                      # (N, N), positives on the diagonal
-    labels = torch.arange(q.size(0), device=q.device)
-    return F.cross_entropy(logits, labels)
+# InfoNCE: normalize, then built-in cross-entropy with the diagonal as the correct class
+anchor, positive = F.normalize(anchor, dim=1), F.normalize(positive, dim=1)
+loss = F.cross_entropy(anchor @ positive.t() / T, torch.arange(anchor.size(0)))
 ```
+
+Quantile, Dice, and Tversky losses have no built-in in core PyTorch; use the snippets in sections 1 and 5.
 
 ---
 
@@ -927,6 +945,6 @@ def info_nce(q, k, tau=0.1):
 - **Sanity-check the initial loss.** For $C$ balanced classes, an untrained model should give cross-entropy near $\log C$ (e.g. 2.30 for 10 classes). A very different value usually means a bug in the labels or output layer.
 - **Verify that the model can overfit a small batch** as a debugging test. If the loss cannot go to near zero on a single small batch, the problem is in the model or the data pipeline, not the hyperparameters.
 - **Scale targets for regression.** Standardizing $y$ keeps MSE gradients in a reasonable range and makes Huber's $\delta$ easier to choose.
-- **Combine losses with care.** In multi-task setups ($L = \sum_k w_k L_k$), the terms can differ by orders of magnitude. Log each one separately and tune the weights, or use learned uncertainty weighting.
+- **Combine losses with care.** In multi-task setups ($L = \sum_j w_j L_j$), the terms can differ by orders of magnitude. Log each one separately and tune the weights, or use learned uncertainty weighting.
 - **The training loss is not the evaluation metric.** Accuracy, F1, AUC, and NDCG are usually non-differentiable, so we optimize a surrogate. Always monitor the metric you actually care about on a validation set.
 - **Calibration differs by loss.** Cross-entropy (and the Brier score) are strictly proper scoring rules: in expectation they reward reporting the true probabilities. That does not guarantee calibration in practice. Large networks often become overconfident, and calibration degrades under model misspecification or distribution shift. Hinge loss produces scores, not probabilities, and focal loss and label smoothing deliberately change the probability targets. If you need reliable probabilities, check calibration on validation data (reliability diagram, Brier score, ECE) and apply temperature scaling after training if needed.
